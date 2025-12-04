@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://qv6imn8piw21"]
+[gd_scene load_steps=3 format=3 uid="uid://qv6imn8piw21"]
 
 [ext_resource type="Script" uid="uid://o4r286qq8o7u" path="res://main.gd" id="1_glv2v"]
+[ext_resource type="Script" uid="uid://d35s2sy3r1e4v" path="res://HUD.gd" id="2_uu6xs"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -42,3 +43,49 @@ text = "New Night"
 [node name="NextTickButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
 text = "Next Hour"
+
+[node name="NextUpdateButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+visible = false
+layout_mode = 2
+text = "Next Update"
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("2_uu6xs")
+
+[node name="Control" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -131.0
+offset_top = 2.0
+offset_bottom = 40.0
+grow_horizontal = 0
+
+[node name="MarginContainer" type="MarginContainer" parent="HUD/Control"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HUD/Control/MarginContainer"]
+layout_mode = 2
+
+[node name="GoldLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.99607843, 0.83137256, 0.38431373, 1)
+text = "Gold: 0"
+
+[node name="CheapAleLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="CheapWineLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="StrongAleLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="MeadLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="GoodWineLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
+layout_mode = 2

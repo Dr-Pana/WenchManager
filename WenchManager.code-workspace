@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.import": true,
+      "**/*.tmp": true
+    },
+    "git.enableSmartCommit": true,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false
+  }
+}
