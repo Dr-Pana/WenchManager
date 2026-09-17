@@ -11,9 +11,15 @@ config_version=5
 [application]
 
 config/name="Wench Manager"
-run/main_scene="uid://qv6imn8piw21"
+run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1152
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
 
 [rendering]
 

@@ -12,19 +12,46 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_glv2v")
 
+[node name="Title" type="Label" parent="."]
+offset_left = 16.0
+offset_top = 12.0
+theme_override_font_sizes/font_size = 26
+text = "Wench Manager · One manageable night"
+
 [node name="MarginContainer" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 100.0
+offset_right = -16.0
+offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
 layout_mode = 2
 
+[node name="Status" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Goal" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Goal: 3 completed visits · average departure satisfaction ≥ 0 (includes bounced visits)"
+
+[node name="Staff" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Tables" type="GridContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+columns = 3
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 10
+
 [node name="Log" type="RichTextLabel" parent="MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 400)
+custom_minimum_size = Vector2(0, 130)
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
@@ -47,28 +74,28 @@ text = "Next Hour"
 [node name="NextUpdateButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
 visible = false
 layout_mode = 2
-text = "Next Update"
+text = "Show next line"
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("2_uu6xs")
 
 [node name="Control" type="Control" parent="HUD"]
 layout_mode = 3
-anchors_preset = 1
-anchor_left = 1.0
+anchors_preset = 10
 anchor_right = 1.0
-offset_left = -131.0
-offset_top = 2.0
-offset_bottom = 40.0
-grow_horizontal = 0
+offset_left = 16.0
+offset_top = 54.0
+offset_right = -16.0
+offset_bottom = 86.0
 
 [node name="MarginContainer" type="MarginContainer" parent="HUD/Control"]
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="HUD/Control/MarginContainer"]
+[node name="VBoxContainer" type="HBoxContainer" parent="HUD/Control/MarginContainer"]
 layout_mode = 2
+theme_override_constants/separation = 22
 
 [node name="GoldLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
 layout_mode = 2

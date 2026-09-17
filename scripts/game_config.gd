@@ -281,3 +281,9 @@ const STARTING_PATIENCE := 5  # Initial patience value for tables
 # Client entry chance
 const CLIENT_ENTRY_CHANCE := 0.5  # 50% chance for each client to enter the tavern
 
+
+# One manageable night: recovery and a provisional service objective.
+const EXHAUSTION_RECOVERY_HOURS := 3
+const IDLE_STAMINA_RECOVERY := 1
+const TARGET_COMPLETED_VISITS := 3
+const TARGET_SATISFACTION := 0.0
