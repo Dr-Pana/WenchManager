@@ -45,8 +45,7 @@ func set_unserved(is_unserved: bool) -> void:
 		# Slightly desaturate or brighten to signal "attention"
 		modulate = Color(1.1, 0.9, 0.9, 1)  # pale
 		# You could instead add a "!" to the name:
-		if not wench_label.text.is_empty():
-			wench_label.text = wench_label.text + "!"
+		wench_label.text = "!"
 	else:
 		# Reset to normal if you changed anything special here
 		pass

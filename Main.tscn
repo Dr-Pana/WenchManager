@@ -1,9 +1,9 @@
-[gd_scene load_steps=5 format=3 uid="uid://qv6imn8piw21"]
+[gd_scene load_steps=4 format=3 uid="uid://qv6imn8piw21"]
 
 [ext_resource type="Script" uid="uid://o4r286qq8o7u" path="res://main.gd" id="1_glv2v"]
 [ext_resource type="Script" uid="uid://d35s2sy3r1e4v" path="res://HUD.gd" id="2_uu6xs"]
-[ext_resource type="PackedScene" uid="uid://dv8s61r7s157m" path="res://TableIndicator.tscn" id="3_r0du0"]
-[ext_resource type="PackedScene" path="res://WenchSelector.tscn" id="4_wench_sel"]
+
+[ext_resource type="PackedScene" path="res://WenchSelector.tscn" id="3_selector"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -14,22 +14,57 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_glv2v")
 
+[node name="Title" type="Label" parent="."]
+offset_left = 16.0
+offset_top = 12.0
+theme_override_font_sizes/font_size = 26
+text = "Wench Manager · One manageable night"
+
 [node name="MarginContainer" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 100.0
+offset_right = -16.0
+offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
 layout_mode = 2
 
+[node name="Status" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Goal" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Goal: 3 completed visits · average departure satisfaction ≥ 0 (includes bounced visits)"
+
+[node name="Staff" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Tables" type="GridContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+columns = 3
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 10
+
 [node name="Log" type="RichTextLabel" parent="MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 400)
+custom_minimum_size = Vector2(0, 130)
 layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
+
+[node name="SelectionArea" type="Control" parent="MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(0, 125)
+layout_mode = 2
+
+[node name="WenchSelector" parent="MarginContainer/VBoxContainer/SelectionArea" instance=ExtResource("3_selector")]
+layout_mode = 1
 
 [node name="Choices" type="VBoxContainer" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -49,28 +84,28 @@ text = "Next Hour"
 [node name="NextUpdateButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
 visible = false
 layout_mode = 2
-text = "Next Update"
+text = "Show next line"
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("2_uu6xs")
 
 [node name="Control" type="Control" parent="HUD"]
 layout_mode = 3
-anchors_preset = 1
-anchor_left = 1.0
+anchors_preset = 10
 anchor_right = 1.0
-offset_left = -131.0
-offset_top = 2.0
-offset_bottom = 40.0
-grow_horizontal = 0
+offset_left = 16.0
+offset_top = 54.0
+offset_right = -16.0
+offset_bottom = 86.0
 
 [node name="MarginContainer" type="MarginContainer" parent="HUD/Control"]
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="VBoxContainer" type="VBoxContainer" parent="HUD/Control/MarginContainer"]
+[node name="VBoxContainer" type="HBoxContainer" parent="HUD/Control/MarginContainer"]
 layout_mode = 2
+theme_override_constants/separation = 22
 
 [node name="GoldLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -91,37 +126,3 @@ layout_mode = 2
 
 [node name="GoodWineLabel" type="Label" parent="HUD/Control/MarginContainer/VBoxContainer"]
 layout_mode = 2
-
-[node name="TableIndicators" type="HBoxContainer" parent="HUD"]
-offset_left = 487.0
-offset_right = 987.0
-offset_bottom = 80.0
-
-[node name="TableIndicator1" parent="HUD/TableIndicators" instance=ExtResource("3_r0du0")]
-layout_mode = 2
-
-[node name="TableIndicator2" parent="HUD/TableIndicators" instance=ExtResource("3_r0du0")]
-layout_mode = 2
-
-[node name="TableIndicator3" parent="HUD/TableIndicators" instance=ExtResource("3_r0du0")]
-layout_mode = 2
-
-[node name="TableIndicator4" parent="HUD/TableIndicators" instance=ExtResource("3_r0du0")]
-layout_mode = 2
-
-[node name="TableIndicator5" parent="HUD/TableIndicators" instance=ExtResource("3_r0du0")]
-layout_mode = 2
-
-[node name="TableIndicator6" parent="HUD/TableIndicators" instance=ExtResource("3_r0du0")]
-layout_mode = 2
-
-[node name="WenchSelector" parent="HUD" instance=ExtResource("4_wench_sel")]
-anchors_preset = 2
-anchor_top = 1.0
-anchor_right = 0.0
-offset_left = 819.0
-offset_top = -150.0
-offset_right = 1119.0
-offset_bottom = -20.0
-grow_horizontal = 1
-grow_vertical = 0

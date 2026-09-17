@@ -32,33 +32,7 @@ func _ready() -> void:
 	if not good_wine_label:
 		push_error("HUD: GoodWineLabel not found!")
 
-	# ---- NEW: hook up TableIndicators ----
-	# Adjust this path if you put the container somewhere else, e.g.:
-	# "Control/MarginContainer/VBoxContainer/TableIndicators"
-	var indicators_parent := get_node_or_null("TableIndicators")
-	if indicators_parent == null:
-		push_error("HUD: TableIndicators container not found at path: TableIndicators")
-		print("HUD children: ", get_children())  # Debug print
-	else:
-		# Clear just in case
-		table_indicators.clear()
-		
-		# We expect children named TableIndicator1..6
-		for i in range(1, 7):  # 1 to 6
-			var node_name := "TableIndicator%d" % i
-			var indicator = indicators_parent.get_node_or_null(node_name)
-			if indicator:
-				table_indicators.append(indicator)
-				# Tell the indicator what its table number is (for the big number label)
-				if indicator.has_method("set_number"):
-					indicator.set_number(i)
-			else:
-				push_error("HUD: %s not found under Control/TableIndicators" % node_name)
-	
-	# ---- Hook up WenchSelector ----
-	wench_selector = get_node_or_null("WenchSelector")
-	if wench_selector == null:
-		push_warning("HUD: WenchSelector not found. Make sure it's added as a child of HUD in Main.tscn")
+	wench_selector = get_node("../MarginContainer/VBoxContainer/SelectionArea/WenchSelector")
 
 
 func update_liquor(stock: Dictionary) -> void:
@@ -95,14 +69,7 @@ func update_table_indicators(sim) -> void:
 	# 2) Fill with occupied tables from the Simulation
 	# sim.tables is expected to be an Array of Dictionaries, each with a "label" like "Table 1"
 	for table_data in sim.tables:
-		var label: String = table_data.get("label", "")
-		if not label.begins_with("Table "):
-			continue
-
-		# Extract the number after "Table "
-		# "Table 1" -> "1"
-		var number_str := label.substr(6)  # from index 6 to the end
-		var table_num := int(number_str)   # 1..6
+		var table_num: int = table_data["id"]
 
 		var idx := table_num - 1           # convert to 0..5
 		if idx < 0 or idx >= table_indicators.size():
