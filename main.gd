@@ -33,6 +33,11 @@ func _ready() -> void:
 	# Get reference to next update button
 	next_update_button = get_node_or_null("MarginContainer/VBoxContainer/HBoxContainer/NextUpdateButton")
 	
+	# Connect WenchSelector signal
+	var wench_selector = hud.get_node_or_null("WenchSelector")
+	if wench_selector:
+		wench_selector.wench_selected.connect(_on_wench_selected)
+	
 	_connect_buttons()
 	_start_new_night()
 
@@ -63,6 +68,8 @@ func _start_new_night() -> void:
 		next_update_button.visible = false
 	var result: Dictionary = sim.start_new_night()
 	_apply_result(result)
+	hud.update_table_indicators(sim)
+	hud.update_wench_selector(sim)
 
 
 func _on_new_night_button_pressed() -> void:
@@ -99,6 +106,11 @@ func _apply_result(result: Dictionary) -> void:
 			_display_next_phrasebook_update()
 	else:
 		_show_choices(choices)
+	
+	# Update table indicators whenever simulation state changes
+	hud.update_table_indicators(sim)
+	# Update wench selector availability and visibility
+	hud.update_wench_selector(sim)
 
 
 # --- Choices handling ----------------------------------------------------------
@@ -219,3 +231,18 @@ func _on_next_update_button_pressed() -> void:
 	if next_update_button:
 		next_update_button.visible = false
 	_display_next_phrasebook_update()
+
+
+# --- Wench Selection handling ----------------------------------------------------------
+
+func _on_wench_selected(wench_name: String) -> void:
+	# Only allow selection if there's a pending table assignment
+	if not sim.has_pending_table_assignment():
+		return
+	
+	# Assign the selected wench to the pending table
+	var result: Dictionary = sim.assign_wench_to_pending_table(wench_name)
+	_apply_result(result)
+	
+	# Highlight the selected wench in the UI
+	hud.highlight_selected_wench(wench_name)

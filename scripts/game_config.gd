@@ -54,7 +54,9 @@ const DRUNKENNESS_ROWDINESS_MODIFIER := 0.2  # Per pint consumed
 # ============================================================================
 
 # Tips calculation
-const SATISFACTION_TIPS_DIVISOR := 10.0  # tips = consumption * price * (1 + satisfaction / SATISFACTION_TIPS_DIVISOR)
+# Formula: base 10% of consumption value + satisfaction bonus (up to 20%) = max 30% total
+# See _calculate_table_tips() in simulation.gd for implementation
+const SATISFACTION_TIPS_DIVISOR := 10.0  # Legacy constant, no longer used in tip calculation
 
 # Satisfaction/rowdiness penalties
 const OUT_OF_STOCK_SATISFACTION_PENALTY := -2

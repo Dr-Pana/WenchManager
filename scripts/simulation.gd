@@ -17,6 +17,12 @@ var current_hour_tables: Array = []  # Randomized table order for current hour
 var current_table_index: int = -1  # Which table is currently being processed
 var hour_in_progress: bool = false  # Whether we're mid-hour processing
 
+# Pending table assignment for manual wench selection
+var pending_table_assignments: Array = []  # Array of tables waiting for wench assignment
+
+# Client entry queue for processing clients one at a time
+var pending_client_queue: Array = []  # Array of clients waiting to enter the tavern
+
 # Configuration is now in scripts/game_config.gd
 # Access via GameConfig.CONSTANT_NAME
 
@@ -30,6 +36,10 @@ func start_new_night() -> Dictionary:
 	current_hour_tables.clear()
 	current_table_index = -1
 	hour_in_progress = false
+	# Clear pending table assignments
+	pending_table_assignments.clear()
+	# Clear pending client queue
+	pending_client_queue.clear()
 	_load_phrasebook()
 	_init_stock()
 	_init_wenches()
@@ -70,13 +80,28 @@ func advance_hour() -> Dictionary:
 	var time_str = "%d%s" % [display_hour_12, period]
 	logs.append("[color=yellow]-- Hour %d (%s) --[/color]" % [display_hour, time_str])
 	
-	# Generate clients for this hour and attempt entry
+	# Generate clients for this hour and store in queue
 	var clients = _generate_clients_for_hour(current_hour)
-	var entry_logs = _attempt_client_entry(clients)
-	logs.append_array(entry_logs)
+	pending_client_queue = clients.duplicate()
+	
+	# Process first client from queue (if any)
+	if pending_client_queue.size() > 0:
+		var client_result = process_next_client_entry()
+		logs.append_array(client_result.get("log_lines", []))
+	else:
+		# No clients this hour
+		if tables.size() == 0:
+			hour += 1
+			logs.append("[i]No clients this hour.[/i]")
+			
+			# End of night check
+			if hour >= GameConfig.HOURS_PER_NIGHT:
+				logs.append_array(_calculate_night_summary())
+			
+			return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
 	
 	# Handle empty table list after client entry
-	if tables.size() == 0:
+	if tables.size() == 0 and pending_table_assignments.is_empty():
 		hour += 1
 		logs.append("[i]No tables to serve this hour.[/i]")
 		
@@ -87,7 +112,21 @@ func advance_hour() -> Dictionary:
 		return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
 	
 	# Randomize table order for this hour
-	current_hour_tables = tables.duplicate()
+	# Exclude tables with pending assignments - they should be processed after assignment
+	current_hour_tables = []
+	var pending_table_labels = []
+	for pending_table in pending_table_assignments:
+		if typeof(pending_table) == TYPE_DICTIONARY:
+			pending_table_labels.append(pending_table.get("label", ""))
+	
+	for table in tables:
+		# Skip tables that are pending assignment
+		if table.get("label", "") in pending_table_labels:
+			continue
+		# Include tables that are already assigned or unserved (but not pending)
+		if table.get("active_wench", "") != "" or table.get("is_unserved", false):
+			current_hour_tables.append(table)
+	
 	# Shuffle the array
 	for i in range(current_hour_tables.size() - 1, 0, -1):
 		var j = randi() % (i + 1)
@@ -98,6 +137,19 @@ func advance_hour() -> Dictionary:
 	# Initialize state
 	current_table_index = 0
 	hour_in_progress = true
+	
+	# If there are pending table assignments, wait for them to be assigned before processing
+	if not pending_table_assignments.is_empty():
+		# Don't start processing yet - wait for all pending assignments
+		# Set hour_in_progress to true so we know we're waiting
+		hour_in_progress = true
+		current_table_index = -1  # No tables to process yet
+		return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
+	
+	# If there are no tables to process, return early
+	if current_hour_tables.size() == 0:
+		# No tables to process this hour
+		return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
 	
 	# Process first table
 	var result = process_next_table()
@@ -243,35 +295,38 @@ func apply_choice(choice_id: String) -> Dictionary:
 		var table_name = choice_id.replace("intervene_free_round_", "")
 		for table in tables:
 			if table["label"] == table_name:
-				# Calculate one hour's consumption
+				# Calculate one hour's consumption (same formula as _consume_liquor_for_table)
 				var group_size = table.get("group_size", 1)
 				var social_status = table.get("social_status", "poor")
 				var base_rate = GameConfig.SOCIAL_STATUS_BASE_DRAIN.get(social_status, 1.0)
-				var pints_per_hour = int(ceil(group_size * base_rate))
+				var pints_per_hour = int(ceil(group_size * base_rate))  # At least 1 pint per hour for the group
 				var liquor_pref = table.get("liquor_preference", "cheap ale")
 				var key := _liquor_key_from_preference(liquor_pref)
 				
-				# Get the hourly consumption that was already processed (and paid for)
-				var hourly_consumption = table.get("hourly_consumption", 0)
-				
-				# Refund the payment that was already added for this hour's consumption
-				if hourly_consumption > 0:
-					var base_price = GameConfig.LIQUOR_PRICES.get(liquor_pref, 1)
-					var refund = hourly_consumption * base_price
-					gold -= refund
-					gold_changed.emit(gold)
-				
-				# Deduct from stock (no gold cost - this replaces the normal consumption)
-				if stock.has(key):
-					var actual_deduction = min(pints_per_hour, stock[key])
-					stock[key] -= actual_deduction
+				# Deduct another hour's worth of stock (no gold cost - it's free)
+				var actual_consumption = 0
+				if stock.has(key) and stock[key] > 0:
+					actual_consumption = min(pints_per_hour, stock[key])
+					stock[key] -= actual_consumption
 					stock[key] = max(stock[key], 0)
 					liquor_stock_changed.emit(stock)
 					
 					# Update consumption counter (free round still counts as consumption for tracking)
-					# But we've already refunded the payment
+					# This affects rowdiness/drunkenness calculations
+					var current_consumption = table.get("consumption", 0)
+					table["consumption"] = current_consumption + actual_consumption
+					
+					# Check if we ran out
+					if stock[key] == 0:
+						# Out of stock - customers are unhappy
+						table["satisfaction"] += GameConfig.OUT_OF_STOCK_SATISFACTION_PENALTY
+						table["rowdiness"] += GameConfig.OUT_OF_STOCK_ROWDINESS_PENALTY
+				else:
+					# Out of stock - customers are unhappy
+					table["satisfaction"] += GameConfig.COMPLETELY_OUT_OF_STOCK_SATISFACTION_PENALTY
+					table["rowdiness"] += GameConfig.COMPLETELY_OUT_OF_STOCK_ROWDINESS_PENALTY
 				
-				# Apply effects
+				# Apply free round effects
 				table["satisfaction"] += GameConfig.FREE_ROUND_SATISFACTION_BONUS
 				table["rowdiness"] += GameConfig.FREE_ROUND_ROWDINESS_REDUCTION
 				table["rowdiness"] = max(table["rowdiness"], 0.0)
@@ -319,8 +374,9 @@ func has_pending_choices() -> bool:
 
 # --- HELPER FUNCTIONS ----------------------------------------------------
 
-func _get_wench_mood(wench: Dictionary, _table: Dictionary) -> String:
-	if wench == null:
+func _get_wench_mood(wench, _table: Dictionary) -> String:
+	# Allow null wench - handle it gracefully
+	if wench == null or typeof(wench) != TYPE_DICTIONARY:
 		return "tired"
 	
 	var stamina = wench.get("stamina", 0)
@@ -381,7 +437,7 @@ func _generate_phrasebook_update_for_table(table: Dictionary) -> Dictionary:
 	var text = template
 	text = text.replace("{table}", table.get("label", "Unknown Table"))
 	text = text.replace("{amount}", str(table.get("hourly_consumption", 0)))
-	text = text.replace("{liquor}", table.get("liquor_preference", "cheap ale"))
+	text = text.replace("{liquor}", _colorize_liquor(table.get("liquor_preference", "cheap ale")))
 	text = text.replace("{wench}", wench_name)
 	
 	# Get mood
@@ -412,6 +468,28 @@ func _liquor_key_from_preference(pref: String) -> String:
 			return "good_wine"
 		_:
 			return "cheap_ale" # fallback
+
+
+func _get_liquor_color(liquor_name: String) -> String:
+	# Map each liquor type to a distinct color
+	match liquor_name.to_lower():
+		"cheap ale":
+			return "tan"  # Light brown for common ale
+		"cheap wine":
+			return "pink"  # Light red/pink for wine
+		"strong ale":
+			return "orange"  # Amber/orange for stronger ale
+		"mead":
+			return "gold"  # Golden for honey-based mead
+		"good wine":
+			return "purple"  # Deep purple for premium wine
+		_:
+			return "white"  # Fallback color
+
+
+func _colorize_liquor(liquor_name: String) -> String:
+	var color = _get_liquor_color(liquor_name)
+	return "[color=%s]%s[/color]" % [color, liquor_name]
 
 
 func _get_time_string() -> String:
@@ -549,8 +627,10 @@ func _update_table_rowdiness_for_table(table: Dictionary) -> void:
 	# 1. Race modifier (orcs rowdiest, then dwarves, etc.)
 	# 2. Drunkenness (consumption over time)
 	# 3. Group size (0.3 per person as rate modifier)
+	
+	# Ensure rowdiness is initialized
 	if not table.has("rowdiness"):
-		return
+		table["rowdiness"] = 0.0
 	
 	var race = table.get("race", "human")
 	var group_size = table.get("group_size", 1)
@@ -775,6 +855,26 @@ func _event_table_for_group(group: String) -> Array:
 	return GameConfig.DEFAULT_EVENT_WEIGHTS
 
 
+# Helper function to check if a table is truly available
+func _is_table_available(table: Dictionary, assigned_tables: Array) -> bool:
+	# Check if table is occupied
+	if table.get("hours_occupied", 0) > 0:
+		return false
+	# Check if table already has a wench assigned
+	if table.get("active_wench", "") != "":
+		return false
+	# Check if table label is in assigned_tables (already claimed this iteration)
+	var table_label = table.get("label", "")
+	if table_label in assigned_tables:
+		return false
+	# Check if table is pending assignment
+	for pending in pending_table_assignments:
+		if typeof(pending) == TYPE_DICTIONARY:
+			if pending.get("label", "") == table_label:
+				return false
+	return true
+
+
 func _generate_clients_for_hour(hour: int) -> Array:
 	# Generate client data for the specified hour based on pattern
 	# Returns array of dictionaries with social_status, race, group_size
@@ -794,68 +894,169 @@ func _generate_clients_for_hour(hour: int) -> Array:
 	return clients
 
 
-func _attempt_client_entry(clients: Array) -> Array:
-	# Attempt to have clients enter the tavern
-	# Returns array of log messages for entries
-	var logs = []
+# Process a single client entry attempt
+# Returns Dictionary with "log" (String) and "success" (bool)
+func _attempt_single_client_entry(client: Dictionary) -> Dictionary:
+	# Track which tables have been assigned in this iteration to prevent duplicates
+	# Get all currently assigned/pending tables
+	var assigned_tables = []
+	for table in tables:
+		if table.get("hours_occupied", 0) > 0 or table.get("active_wench", "") != "":
+			assigned_tables.append(table.get("label", ""))
+	for pending in pending_table_assignments:
+		if typeof(pending) == TYPE_DICTIONARY:
+			assigned_tables.append(pending.get("label", ""))
 	
-	for client in clients:
-		# Check if there's space available
-		if tables.size() >= GameConfig.NUM_TABLES:
-			# No tables available, skip coinflip
-			continue
+	# Collect all available tables
+	var available_tables = []
+	for table in tables:
+		if _is_table_available(table, assigned_tables):
+			available_tables.append(table)
+	
+	# Shuffle available tables for random selection
+	if available_tables.size() > 0:
+		# Shuffle the array
+		for i in range(available_tables.size() - 1, 0, -1):
+			var j = randi() % (i + 1)
+			var temp = available_tables[i]
+			available_tables[i] = available_tables[j]
+			available_tables[j] = temp
+		
+		# Select first table from shuffled array (random selection)
+		var empty_table = available_tables[0]
+		var table_label = empty_table.get("label", "")
 		
 		# 50% chance to enter
 		if randf() < GameConfig.CLIENT_ENTRY_CHANCE:
-			# Client enters - create a table
-			var next_table_id = tables.size() + 1
-			var label = "Table %d" % next_table_id
-			var table = _make_table(
-				next_table_id,
-				label,
+			# Update the empty table with new client data
+			empty_table["social_status"] = client["social_status"]
+			empty_table["race"] = client["race"]
+			empty_table["group_size"] = client["group_size"]
+			empty_table["liquor_preference"] = _get_liquor_for_status(client["social_status"])
+			empty_table["description"] = "A %s group of %s %s" % [
+				_get_size_description(client["group_size"]),
 				client["social_status"],
-				client["race"],
-				client["group_size"]
-			)
+				client["race"] + "s"
+			]
+			empty_table["group"] = empty_table["description"]  # Keep for backward compatibility
 			
-			# Assign wench to table (round-robin)
-			_assign_wench_to_new_table(table)
+			# Recalculate resource drain rate for new group
+			var base_rate = GameConfig.SOCIAL_STATUS_BASE_DRAIN.get(client["social_status"], 1.0)
+			var size_modifier = 1.0
+			if client["group_size"] > 2:
+				size_modifier = 1.0 + (client["group_size"] - 2) * GameConfig.GROUP_SIZE_DRAIN_MODIFIER
+			empty_table["resource_drain_rate"] = base_rate * size_modifier
 			
-			tables.append(table)
-			logs.append("%s enters and sits at %s." % [table.get("description", "A group"), label])
+			# Reset table state for new customers
+			empty_table["rowdiness"] = 0
+			empty_table["consumption"] = 0
+			empty_table["satisfaction"] = 0
+			empty_table["event_chance"] = 0.0
+			# Set hours_occupied to 1 to mark it as occupied (will be incremented at end of hour)
+			empty_table["hours_occupied"] = 1
+			
+			# Add to pending assignments for manual wench selection
+			pending_table_assignments.append(empty_table)
+			
+			var log_msg = "%s enters and sits at %s. [color=yellow]Select a wench to assign.[/color]" % [empty_table.get("description", "A group"), table_label]
+			return {"log": log_msg, "success": true}
+		else:
+			# Entry chance failed
+			return {"log": "", "success": false}
 	
-	return logs
+	# No empty table available - check if we can create a new one
+	if tables.size() >= GameConfig.NUM_TABLES:
+		# No tables available
+		return {"log": "", "success": false}
+	
+	# 50% chance to enter
+	if randf() < GameConfig.CLIENT_ENTRY_CHANCE:
+		# Client enters - create a new table
+		var next_table_id = tables.size() + 1
+		var label = "Table %d" % next_table_id
+		var table = _make_table(
+			next_table_id,
+			label,
+			client["social_status"],
+			client["race"],
+			client["group_size"]
+		)
+		
+		# Add to pending assignments for manual wench selection
+		pending_table_assignments.append(table)
+		
+		tables.append(table)
+		var log_msg = "%s enters and sits at %s. [color=yellow]Select a wench to assign.[/color]" % [table.get("description", "A group"), label]
+		return {"log": log_msg, "success": true}
+	
+	return {"log": "", "success": false}
 
 
-func _assign_wench_to_new_table(table: Dictionary) -> void:
-	# Assign a wench to a newly created table using round-robin
-	# Find wenches that are available (state == "serving")
-	var available_wenches = []
-	for w in wenches:
-		if w.get("current_state", "serving") == "serving":
-			available_wenches.append(w)
+# Process the next client from the queue
+func process_next_client_entry() -> Dictionary:
+	var logs = []
 	
-	if available_wenches.size() == 0:
-		# No available wenches, mark as unserved
-		table["is_unserved"] = true
-		return
+	if pending_client_queue.is_empty():
+		# No more clients to process
+		return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
 	
-	# Count how many tables each wench is currently serving
-	var wench_table_counts = {}
-	for w in available_wenches:
-		wench_table_counts[w["name"]] = 0
-		for t in tables:
-			if t.get("active_wench", "") == w["name"]:
-				wench_table_counts[w["name"]] += 1
+	# Get next client from queue
+	var client = pending_client_queue[0]
+	pending_client_queue.remove_at(0)
 	
-	# Find wench with fewest tables (load balancing)
+	# Attempt entry for this client
+	var result = _attempt_single_client_entry(client)
+	
+	if result["success"]:
+		# Client entered successfully
+		logs.append(result["log"])
+	
+	# Return result (even if entry failed, we still processed the client)
+	return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
+
+
+func _assign_wench_to_new_table(table: Dictionary, wench_name: String = "") -> void:
+	# Assign a wench to a newly created table
+	# If wench_name is provided, use that wench; otherwise use round-robin load balancing
+	
 	var best_wench = null
-	var min_tables = 999999
-	for w in available_wenches:
-		var count = wench_table_counts.get(w["name"], 0)
-		if count < min_tables:
-			min_tables = count
-			best_wench = w
+	
+	if wench_name != "":
+		# Find the specified wench
+		for w in wenches:
+			if w.get("name", "") == wench_name:
+				# Check if wench is available
+				if w.get("current_state", "serving") == "serving":
+					best_wench = w
+				break
+	else:
+		# Auto-assign using round-robin (load balancing)
+		# Find wenches that are available (state == "serving")
+		var available_wenches = []
+		for w in wenches:
+			if w.get("current_state", "serving") == "serving":
+				available_wenches.append(w)
+		
+		if available_wenches.size() == 0:
+			# No available wenches, mark as unserved
+			table["is_unserved"] = true
+			return
+		
+		# Count how many tables each wench is currently serving
+		var wench_table_counts = {}
+		for w in available_wenches:
+			wench_table_counts[w["name"]] = 0
+			for t in tables:
+				if t.get("active_wench", "") == w["name"]:
+					wench_table_counts[w["name"]] += 1
+		
+		# Find wench with fewest tables (load balancing)
+		var min_tables = 999999
+		for w in available_wenches:
+			var count = wench_table_counts.get(w["name"], 0)
+			if count < min_tables:
+				min_tables = count
+				best_wench = w
 	
 	if best_wench != null:
 		table["active_wench"] = best_wench["name"]
@@ -865,13 +1066,106 @@ func _assign_wench_to_new_table(table: Dictionary) -> void:
 			best_wench["assigned_tables"].append(table["label"])
 		
 		# Set backup wenches (all other available wenches)
-		var backup_wenches = []
-		for w in available_wenches:
-			if w["name"] != best_wench["name"]:
-				backup_wenches.append(w["name"])
-		table["backup_wenches"] = backup_wenches
+		var available_wenches = []
+		for w in wenches:
+			if w.get("current_state", "serving") == "serving" and w["name"] != best_wench["name"]:
+				available_wenches.append(w["name"])
+		table["backup_wenches"] = available_wenches
 	else:
 		table["is_unserved"] = true
+
+# Assign a wench to the next pending table (called from UI when player selects a wench)
+func assign_wench_to_pending_table(wench_name: String) -> Dictionary:
+	var logs = []
+	
+	if pending_table_assignments.is_empty():
+		# No pending tables, return empty result
+		return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
+	
+	# Get the first pending table (process one at a time)
+	var pending_table = pending_table_assignments[0]
+	var table_label = pending_table.get("label", "Unknown table")
+	var table = null
+	
+	# Find the actual table in the tables array to ensure we have the correct reference
+	for t in tables:
+		if t.get("label", "") == table_label:
+			table = t
+			break
+	
+	if table == null:
+		# Table not found, something went wrong - remove from pending and try next
+		push_error("Table %s not found in tables array" % table_label)
+		pending_table_assignments.remove_at(0)
+		# If there are more pending tables, return a message to continue
+		if not pending_table_assignments.is_empty():
+			return {"log_lines": ["[color=red]Error assigning table. Please try again.[/color]"], "choices": [], "phrasebook_updates": []}
+		return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
+	
+	# Assign the wench
+	_assign_wench_to_new_table(table, wench_name)
+	
+	# Remove this table from pending assignments
+	pending_table_assignments.remove_at(0)
+	
+	logs.append("[color=green]%s assigned to %s.[/color]" % [wench_name, table.get("label", "Unknown table")])
+	
+	# If there are more pending tables, don't process yet - wait for next assignment
+	if not pending_table_assignments.is_empty():
+		# More tables need assignment - return early without processing
+		return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
+	
+	# All pending tables are assigned - check if there are more clients in queue
+	if not pending_client_queue.is_empty():
+		# Process next client from queue
+		var client_result = process_next_client_entry()
+		# Merge logs
+		client_result["log_lines"] = logs + client_result.get("log_lines", [])
+		return client_result
+	
+	# All pending tables are assigned and no more clients in queue - now we can start processing
+	# If hour is in progress, rebuild current_hour_tables to include all assigned tables
+	if hour_in_progress and pending_client_queue.is_empty():
+		# Rebuild current_hour_tables to include all assigned tables (including newly assigned ones)
+		# This ensures we process all tables in the correct order
+		current_hour_tables.clear()
+		for t in tables:
+			# Include all tables that have a wench assigned (or are unserved)
+			if t.get("active_wench", "") != "" or t.get("is_unserved", false):
+				current_hour_tables.append(t)
+		
+		# Shuffle the array for random processing order
+		for i in range(current_hour_tables.size() - 1, 0, -1):
+			var j = randi() % (i + 1)
+			var temp = current_hour_tables[i]
+			current_hour_tables[i] = current_hour_tables[j]
+			current_hour_tables[j] = temp
+		
+		# If we have tables to process, start processing
+		if current_hour_tables.size() > 0:
+			# Start from the beginning
+			current_table_index = 0
+			
+			# Process the first table
+			var process_result = process_next_table()
+			# Merge logs
+			process_result["log_lines"] = logs + process_result.get("log_lines", [])
+			return process_result
+	
+	return {"log_lines": logs, "choices": [], "phrasebook_updates": []}
+
+# Check if there's a pending table assignment
+func has_pending_table_assignment() -> bool:
+	return not pending_table_assignments.is_empty()
+	
+# Get the next pending table label (for UI display)
+func get_next_pending_table_label() -> String:
+	if pending_table_assignments.is_empty():
+		return ""
+	var next_table = pending_table_assignments[0]
+	if typeof(next_table) == TYPE_DICTIONARY:
+		return next_table.get("label", "")
+	return ""
 
 
 func _process_table_leaving() -> Array:
@@ -966,8 +1260,9 @@ func _append_table_overview(logs: Array) -> void:
 			var drain_rate = table.get("resource_drain_rate", 1.0)
 			var group_size = table.get("group_size", 1)
 			var pints_per_hour = int(ceil(group_size * drain_rate))
+			var colorized_liquor = _colorize_liquor(table["liquor_preference"])
 			logs.append("  [i]Prefers: %s | Event chance: %.1f%% | Consumption: ~%d pints/hour[/i]" %
-				[table["liquor_preference"], table.get("event_chance", 0.0) * 100, pints_per_hour])
+				[colorized_liquor, table.get("event_chance", 0.0) * 100, pints_per_hour])
 
 
 func _calculate_night_summary() -> Array:
@@ -1054,14 +1349,33 @@ func _calculate_night_summary() -> Array:
 
 func _calculate_table_tips(table: Dictionary) -> int:
 	# Calculate tips for a table when they leave
-	# Formula: consumption * base_price * (1 + satisfaction / SATISFACTION_TIPS_DIVISOR)
+	# Formula ensures waitress gets max 30% of table's consumption value
+	# Base tip: 10% of consumption value
+	# Satisfaction bonus: up to +20% (max 30% total)
 	# Note: Tips are now paid to waitresses, not added to gold total
 	var consumption = table.get("consumption", 0)  # in pints
 	var satisfaction = table.get("satisfaction", 0)
 	var liquor_pref = table.get("liquor_preference", "cheap ale")
 	var base_price = GameConfig.LIQUOR_PRICES.get(liquor_pref, 1)
 	
-	var tips = consumption * base_price * (1.0 + float(satisfaction) / GameConfig.SATISFACTION_TIPS_DIVISOR)
+	# Calculate total consumption value
+	var consumption_value = consumption * base_price
+	
+	# Base tip percentage (10% of consumption value)
+	var base_tip_percent = 0.10
+	
+	# Satisfaction bonus: scales from 0% to 20% based on satisfaction
+	# Satisfaction range: -10 to +10 (roughly), maps to 0% to 20% bonus
+	# Clamp satisfaction to reasonable range for calculation
+	var clamped_satisfaction = clamp(satisfaction, -10, 10)
+	# Map -10 to 0% bonus, +10 to 20% bonus
+	var satisfaction_bonus_percent = ((clamped_satisfaction + 10.0) / 20.0) * 0.20
+	
+	# Total tip percentage (base + bonus, capped at 30%)
+	var total_tip_percent = min(base_tip_percent + satisfaction_bonus_percent, 0.30)
+	
+	# Calculate tips
+	var tips = consumption_value * total_tip_percent
 	return int(tips)
 
 
@@ -1116,7 +1430,8 @@ func _append_stock_report(logs: Array) -> void:
 	logs.append("[b]--- Stock Report ---[/b]")
 	for liquor_type in stock.keys():
 		var display_name = liquor_type.replace("_", " ").capitalize()
-		logs.append("%s: %d pints" % [display_name, stock[liquor_type]])
+		var colorized_name = _colorize_liquor(display_name)
+		logs.append("%s: %d pints" % [colorized_name, stock[liquor_type]])
 	logs.append("")
 
 

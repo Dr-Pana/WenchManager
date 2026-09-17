@@ -21,7 +21,7 @@ Current focus: **Action Phase**.
 
 ## 2. Action Phase – Current Implementation (v0.2)
 
-Implemented in `scripts/simulation.gd` plus UI wiring in `scripts/main.gd`.
+Implemented in `scripts/simulation.gd` plus UI wiring in `main.gd` and `HUD.gd`. The UI includes a log display, choice buttons, resource indicators (liquor stock, gold), and table indicators showing the status of all tables.
 
 **Key State Variables:**
 - `current_hour_tables: Array` - Randomized table order for current hour
@@ -264,7 +264,44 @@ Fields:
   - Tiefling + Human: -1
   - (See `race_compatibility` table in code for full matrix)
 
-### 2.4 End-of-Night Summary
+### 2.7 Table Indicators UI System
+
+The table indicators provide a visual at-a-glance overview of all tables in the tavern, displayed in the HUD.
+
+**Implementation:**
+- Located in `HUD.gd` and `ui/TableIndicator.gd`
+- Six `TableIndicator` nodes displayed horizontally in the HUD
+- Each indicator represents one table (Table 1-6)
+
+**Visual Display:**
+- **Table Number**: Large number label showing which table (1-6)
+- **Wench Initials**: First 3 letters of the assigned wench's name (e.g., "Lys", "Bra", "Mim")
+- **Background Color**: Indicates rowdiness level:
+  - **Green** (calm): Rowdiness < 5.0
+  - **Yellow** (rowdy): Rowdiness 5.0 to dangerous threshold (default 10.0)
+  - **Red** (dangerous): Rowdiness >= dangerous threshold
+- **Opacity**: 
+  - Empty tables: 40% opacity (grey background)
+  - Occupied tables: 100% opacity
+- **Unserved Indicator**: If a table is unserved, the wench label gets an exclamation mark appended (e.g., "Lys!")
+
+**Update Mechanism:**
+- `HUD.update_table_indicators(sim)` is called:
+  - After starting a new night
+  - After any simulation state change (table processing, choices applied, etc.)
+- The function:
+  1. Marks all indicators as empty initially
+  2. Iterates through `sim.tables` array
+  3. Updates each indicator with current table state (rowdiness, wench name, unserved status)
+
+**Node Structure:**
+- `TableIndicators` container is a direct child of the `HUD` CanvasLayer
+- Each `TableIndicator` is a Control node with:
+  - `ColorRect` for background color
+  - `NumberLabel` for table number
+  - `WenchLabel` for wench initials
+
+### 2.8 End-of-Night Summary
 
 - Automatically triggers after 10 hours in `advance_hour()` (service runs 5pm-3am).
 - Displays a summary in the log with:
@@ -273,16 +310,34 @@ Fields:
   - **Most tired wench**: Wench with the lowest current stamina value (name and stamina displayed).
   - **Rowdiest table**: Table with the highest rowdiness value (label and rowdiness displayed, formatted to 1 decimal place).
 
-**Gold Calculation:**
-- Each table's earnings calculated separately using the formula:
-  - `table_earnings = consumption * liquor_price * 2 * (1 + satisfaction/10)`
+**Gold Calculation (Upfront Payment):**
+- Customers pay upfront for liquor as it's consumed each hour.
+- Payment formula: `upfront_payment = actual_consumption * liquor_price`
 - Where:
-  - `consumption`: Total liquor consumed by the table in pints (accumulated over hours, integer).
+  - `actual_consumption`: Pints consumed this hour (limited by available stock).
   - `liquor_price`: Base price per pint from `liquor_prices` dictionary based on table's `liquor_preference`.
-  - `satisfaction`: Table's current satisfaction value.
-- Total gold is the sum of all table earnings (rounded to whole number for display).
+- This payment goes directly to the tavern's gold total.
+
+**Tips Calculation:**
+- Tips are paid to waitresses when tables leave, separate from upfront payments.
+- Formula ensures waitresses receive **maximum 30%** of the table's total consumption value:
+  - Base tip: **10%** of consumption value
+  - Satisfaction bonus: **0% to 20%** additional (scales with satisfaction)
+  - Total tip percentage: `min(base_tip_percent + satisfaction_bonus_percent, 0.30)`
+- Calculation:
+  - `consumption_value = consumption * liquor_price`
+  - `satisfaction_bonus_percent = ((clamped_satisfaction + 10.0) / 20.0) * 0.20`
+    - Satisfaction is clamped to range -10 to +10
+    - Maps -10 satisfaction → 0% bonus, +10 satisfaction → 20% bonus
+  - `tips = consumption_value * total_tip_percent`
+- Example:
+  - Table consumes 10 pints at 5 gold/pint = 50 gold consumption value
+  - Minimum tip (satisfaction = -10): 10% = 5 gold
+  - Maximum tip (satisfaction = +10): 30% = 15 gold
+- Tips are tracked per wench in `tips_earned` field and displayed in end-of-night summary.
 
 **Implementation:**
+- `_calculate_table_tips(table)`: Computes tips for a table when they leave.
 - `_calculate_night_summary()`: Computes all summary statistics and returns formatted log lines.
 - Called automatically from `advance_hour()` when `hour >= 10`.
 
