@@ -18,9 +18,9 @@ script = ExtResource("1_glv2v")
 offset_left = 16.0
 offset_top = 12.0
 theme_override_font_sizes/font_size = 26
-text = "Wench Manager · One manageable night"
+text = "Wench Manager · Live dashboard"
 
-[node name="MarginContainer" type="MarginContainer" parent="."]
+[node name="MarginContainer" type="ScrollContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -28,23 +28,36 @@ anchor_bottom = 1.0
 offset_left = 16.0
 offset_top = 100.0
 offset_right = -16.0
-offset_bottom = -16.0
+offset_bottom = -62.0
 grow_horizontal = 2
 grow_vertical = 2
+horizontal_scroll_mode = 0
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
 layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="Status" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Overview" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 
 [node name="Goal" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 text = "Goal: 3 completed visits · average departure satisfaction ≥ 0 (includes bounced visits)"
 
+[node name="StaffTitle" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "STAFF"
+
 [node name="Staff" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_constants/separation = 16
+
+[node name="TablesTitle" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "TABLES"
 
 [node name="Tables" type="GridContainer" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -52,10 +65,14 @@ columns = 3
 theme_override_constants/h_separation = 16
 theme_override_constants/v_separation = 10
 
-[node name="Log" type="RichTextLabel" parent="MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 130)
+[node name="Action" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
-size_flags_vertical = 3
+autowrap_mode = 2
+
+[node name="Results" type="RichTextLabel" parent="MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
 bbcode_enabled = true
 
 [node name="SelectionArea" type="Control" parent="MarginContainer/VBoxContainer"]
@@ -69,22 +86,39 @@ layout_mode = 1
 [node name="Choices" type="VBoxContainer" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+[node name="Log" type="RichTextLabel" parent="MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(0, 130)
 layout_mode = 2
-size_flags_vertical = 4
+size_flags_vertical = 3
+bbcode_enabled = true
 
-[node name="NewNightButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+[node name="Footer" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -50.0
+offset_right = -16.0
+offset_bottom = -12.0
+
+[node name="NewNightButton" type="Button" parent="Footer"]
 layout_mode = 2
 text = "New Night"
 
-[node name="NextTickButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+[node name="NextTickButton" type="Button" parent="Footer"]
 layout_mode = 2
 text = "Next Hour"
 
-[node name="NextUpdateButton" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+[node name="NextUpdateButton" type="Button" parent="Footer"]
 visible = false
 layout_mode = 2
-text = "Show next line"
+text = "Continue now"
+
+[node name="HistoryToggle" type="CheckButton" parent="Footer"]
+layout_mode = 2
+text = "Event history"
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("2_uu6xs")

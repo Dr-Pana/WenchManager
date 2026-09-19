@@ -17,7 +17,9 @@ godot --path .
 The scene uses a 1152 × 900 reference viewport and scales with the window.
 No plugins, API keys or external dependencies are required.
 
-- Wait for opening narration or use **Show next line**.
+- Read the live clock, occupancy totals, staff stamina and table panels. Opening is immediately playable.
+- **Event history** reveals recent narration if wanted; it is hidden by default.
+- **Continue now** skips the brief pause between automatic updates.
 - **Next Hour** admits guests. Assign each group with a staff portrait, then resolve service choices.
 - Between hours, use each occupied table's dropdown to assign available staff.
 - Watch stamina, coverage and satisfaction. Unassigned idle staff recover stamina;
@@ -66,6 +68,7 @@ also be made with `--export-pack Linux builds/WenchManager.pck`.
 
 ## Design and limits
 
+See `docs/dashboard.md` for the live UI and its validation.
 See `docs/reconciliation.md` for what was preserved and combined.
 See `design_spec.md` for the current behavior and `docs/acceptance.md` for manual
 playtest checks. The earlier design remains in `docs/recovered_design_archive.md`.

@@ -24,6 +24,11 @@ func run() -> void:
 	root.add_child(ui)
 	await process_frame
 	check(ui.phrasebook_pause_timer.timeout.get_connections().size() == 1, "Exactly one timer callback")
+	check(not ui.log_label.visible and not ui.playback_active, "Opening is immediately playable with history hidden")
+	check(ui.overview_label.text.contains("Occupied: 0/6") and ui.status_label.text.contains("5pm"), "Opening dashboard shows time and empty occupancy")
+	var staff_node = ui.staff_labels["Mimi"]
+	var table_node = ui.table_labels[1]
+	var selector_node = ui.table_selectors[1]
 	# Restart while initial text is still playing.
 	ui._start_new_night()
 	flush_playback(ui)
@@ -49,6 +54,11 @@ func run() -> void:
 	var selector = ui.table_selectors[0]
 	selector.item_selected.emit(3)
 	check(table["active_wench"] == "Mimi", "Selector signal reassigns the correct visit")
+	check(ui.staff_labels["Mimi"].text.contains("Tables: 1"), "Live staff assignment text updates")
+	ui.sim.wenches[2]["stamina"] = 2
+	ui._refresh_dashboard()
+	check(ui.staff_labels["Mimi"].text.contains("Stamina: 2/5"), "Stamina indicator updates without narration")
+	check(ui.table_labels[0].text.contains("Guests: 1") and ui.overview_label.text.contains("Occupied: 1/6"), "Table and overview occupancy update")
 	check(ui.sim.wenches[2]["assigned_tables"] == [1], "Dashboard and staff assignments agree")
 	# Reproduce the recovered Table 2 indicator/assignment report.
 	var second = ui.sim._make_table(2, "Table 2", "poor", "human", 1)
@@ -60,6 +70,8 @@ func run() -> void:
 	flush_playback(ui)
 	await process_frame
 	check(ui.hud.wench_selector.visible, "Portraits appear for pending arrival")
+	check(ui.action_label.text.contains("Table 2") and ui.table_labels[1].text.contains("ASSIGN STAFF"), "Assignment context is visible without history")
+	check(staff_node == ui.staff_labels["Mimi"] and table_node == ui.table_labels[1] and selector_node == ui.table_selectors[1], "Dashboard nodes persist across updates")
 	check(ui.hud.table_indicators[1].wench_label.text == "!", "Pending Table 2 visibly unserved")
 	check(ui.next_hour_button.get_global_rect().end.y <= root.get_visible_rect().size.y, "Portrait assignment fits viewport")
 	ui.hud.wench_selector.mimi_button.pressed.emit()
@@ -83,16 +95,19 @@ func run() -> void:
 	ui.sim.current_hour_tables = [table]
 	ui.sim.current_table_index = 0
 	ui._apply_result(ui.sim.process_next_table())
-	check(ui.next_hour_button.disabled, "Advance locked during narration")
+	check(ui.next_hour_button.disabled, "Advance locked during decision")
+	check(ui.action_label.text.contains("Table 1") and ui.table_labels[0].text.contains("DECISION NEEDED"), "Decision identifies its table without reading history")
 	flush_playback(ui)
 	check(ui.choices_container.get_child_count() == 1, "Crisis displays one actionable button")
 	var stale_id = ui.sim.pending_choices[0]["id"]
+	ui.history_toggle.button_pressed = true
 	# Bounds check includes maximum choice stack at the supported viewport.
 	ui._show_choices([{"id": "a", "text": "One"}, {"id": "b", "text": "Two"}, {"id": "c", "text": "Three"}])
 	await process_frame
 	await process_frame
 	check(ui.next_hour_button.get_global_rect().end.y <= root.get_visible_rect().size.y, "Controls fit the viewport with three choices")
-	check(ui.log_label.size.y >= 130.0, "Log retains useful space")
+	check(ui.log_label.size.y >= 130.0, "Optional history retains useful space")
+	ui.history_toggle.button_pressed = false
 	ui._start_new_night()
 	flush_playback(ui)
 	ui._on_choice_button_pressed(stale_id)
@@ -118,10 +133,19 @@ func run() -> void:
 	flush_playback(ui)
 	check(ui.sim.hour == 8 and ui.sim.phase == Simulation.Phase.CLOSED, "UI completes eight hours without phrasebook")
 	check(ui.next_hour_button.disabled and ui.choices_container.get_child_count() == 0, "Closed night has no advance or choice controls")
-	check(ui.log_label.get_parsed_text().contains("End of Night Summary"), "UI displays results")
+	check(ui.results_label.visible and ui.results_label.get_parsed_text().contains("Completed:"), "Results visible with history hidden")
+	check(not ui.log_label.visible and ui.status_label.text.contains("1am"), "Closing clock correct without opening history")
+	ui.history_toggle.button_pressed = true
+	check(ui.log_label.get_parsed_text().contains("End of Night Summary"), "Optional history remains available")
+	ui.history_toggle.button_pressed = false
 	ui.new_night_button.pressed.emit()
 	flush_playback(ui)
 	check(ui.sim.hour == 0 and ui.sim.visit_history.is_empty(), "New Night after closing clears history")
+	check(not ui.results_label.visible and ui.overview_label.text.contains("Occupied: 0/6"), "Restart resets dashboard and hides old results")
+	check(ui.staff_labels["Mimi"] == staff_node, "Restart reuses staff panel")
+	for i in range(200):
+		ui._append_line("History entry %d" % i)
+	check(ui.history_lines.size() == ui.HISTORY_LIMIT and ui.history_lines.back() == "History entry 199", "History stays bounded and retains newest events")
 	check(ui.phrasebook_pause_timer.timeout.get_connections().size() == 1, "Restarts never accumulate timer callbacks")
 	ui.queue_free()
 	await process_frame

@@ -52,7 +52,8 @@ staff fatigue/recovery is updated, time advances and coverage is refreshed.
 Each result contains `log_lines`, `choices`, and `phrasebook_updates`. The UI
 controls presentation but never determines whether an hour exists or has ended.
 One timer connection handles playback. Restart clears its queue and stops the
-timer. "Show next line" advances narration without advancing an extra hour.
+timer. "Continue now" skips the short pause between state updates without starting
+an extra hour. Narration no longer controls playback timing.
 Missing templates do not block progress; mechanical outcome lines still display.
 
 ## Identity and history
@@ -130,3 +131,19 @@ See `docs/reconciliation.md` for branch provenance, retained features, fixes, an
 current validation. `Issues.md` is preserved as the recovered historical note;
 its old hold on summary work predates the subsequently approved playable-night
 milestone. The summary improvements from that milestone are retained here.
+
+## Live dashboard presentation
+
+The default view shows current time/interval, occupied tables, guest count,
+unserved tables, completed visits, staff stamina/recovery/assignments, and each
+slot's occupancy and state. Panels are created once and refreshed in place.
+Assignment and decision targets are named directly on screen, with portrait and
+choice controls available immediately when input is required. Closing results
+have their own panel. A scrollable body keeps content accessible, while primary
+controls remain in a fixed footer.
+
+Detailed event history is optional, hidden by default and limited to 160 recent
+entries. It never gates simulation progress. Opening and input prompts do not
+wait for narration. Automatic admission/service steps retain a short visual pause,
+skippable with Continue now. This is a presentation change only; simulation rules,
+balance constants and art are unchanged. See docs/dashboard.md.
