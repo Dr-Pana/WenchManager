@@ -8,6 +8,7 @@ func _initialize() -> void:
 	_test_visit_identity_and_assignment()
 	_test_choices()
 	_test_arrival_assignments()
+	_test_service_balance()
 	_test_staff_recovery()
 	_test_history_and_goal()
 	_test_events_and_unserved()
@@ -250,3 +251,27 @@ func _test_arrival_assignments() -> void:
 	sim.advance_hour()
 	drain_hour(sim)
 	check(sim.hour == 1 and not sim.has_pending_table_assignment(), "Unavailable roster does not deadlock admission")
+
+func _test_service_balance() -> void:
+	var sim = fresh()
+	var table = add_visit(sim, 1)
+	sim.stock["cheap_ale"] = 1
+	sim._update_table_rowdiness_for_table(table)
+	check(table["satisfaction"] == 1 and sim.stock["cheap_ale"] == 0, "Complete service with final inventory item earns satisfaction")
+	sim._update_table_rowdiness_for_table(table)
+	check(table["satisfaction"] == -2, "Unfulfilled order receives shortage penalty and no service reward")
+	var w = sim.wenches[1]
+	w["stamina"] = 3
+	sim.hour_workloads.clear()
+	sim._update_staff_after_hour()
+	check(w["stamina"] == 5, "Idle staff recover two stamina")
+	w["stamina"] = w["max_stamina"] - 1
+	sim._update_staff_after_hour()
+	check(w["stamina"] == w["max_stamina"], "Idle recovery caps at maximum")
+	add_visit(sim, 2)
+	var before = table["satisfaction"]
+	sim._event_check(w, table, -100, "success", "failure", "service")
+	check(table["satisfaction"] == before + 2, "Successful event retains full reward with multiple assignments")
+	before = table["satisfaction"]
+	sim._event_check(w, table, 100, "success", "failure", "service")
+	check(table["satisfaction"] == before - 1, "Failed event costs one satisfaction")

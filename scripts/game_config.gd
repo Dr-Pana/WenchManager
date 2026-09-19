@@ -74,7 +74,7 @@ const BOUNCER_ROWDINESS_REDUCTION := -2
 
 # Event satisfaction effects
 const EVENT_SUCCESS_BASE_SATISFACTION := 2
-const EVENT_FAIL_SATISFACTION_PENALTY := -2
+const EVENT_FAIL_SATISFACTION_PENALTY := -1
 const EVENT_FAIL_ROWDINESS_PENALTY := 1
 const ROWDY_NOISE_ROWDINESS_PENALTY := 1
 
@@ -286,6 +286,8 @@ const CLIENT_ENTRY_CHANCE := 0.5  # 50% chance for each client to enter the tave
 
 # Recovery and provisional objective from the tested milestone.
 const EXHAUSTION_RECOVERY_HOURS := 1
-const IDLE_STAMINA_RECOVERY := 1
+const IDLE_STAMINA_RECOVERY := 2
 const TARGET_COMPLETED_VISITS := 3
 const TARGET_SATISFACTION := 0.0
+
+const ROUTINE_SERVICE_SATISFACTION := 1
