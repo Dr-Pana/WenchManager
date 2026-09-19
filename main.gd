@@ -16,6 +16,14 @@ extends Control
 @onready var history_toggle: CheckButton = $Footer/HistoryToggle
 var staff_labels: Dictionary = {}
 var table_labels: Array[Label] = []
+@onready var latest_event_label: RichTextLabel = $MarginContainer/VBoxContainer/LatestEvent
+var latest_event: String = ""
+var table_portraits: Array[TextureRect] = []
+const STAFF_PORTRAITS := {
+	"Lysa": preload("res://portraits/lysa_icon.png"),
+	"Brakka": preload("res://portraits/brakka_icon.png"),
+	"Mimi": preload("res://portraits/mimi_icon.png"),
+}
 var history_lines: Array[String] = []
 const HISTORY_LIMIT := 160
 
@@ -51,6 +59,8 @@ func _start_new_night() -> void:
 	_clear_choices()
 	log_label.clear()
 	history_lines.clear()
+	latest_event = ""
+	latest_event_label.clear()
 	_apply_result(sim.start_new_night())
 
 func _on_next_hour_button_pressed() -> void:
@@ -125,7 +135,10 @@ func _append_line(text: String) -> void:
 func _record_history(text: String) -> void:
 	if text.is_empty():
 		return
-	history_lines.append(text)
+	if not latest_event.is_empty():
+		history_lines.append(latest_event)
+	latest_event = text
+	latest_event_label.text = text
 	while history_lines.size() > HISTORY_LIMIT:
 		history_lines.pop_front()
 
@@ -174,6 +187,14 @@ func _build_dashboard() -> void:
 		var row = HBoxContainer.new()
 		var indicator = preload("res://TableIndicator.tscn").instantiate()
 		row.add_child(indicator)
+		var portrait = TextureRect.new()
+		portrait.custom_minimum_size = Vector2(48, 48)
+		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		portrait.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(portrait)
+		table_portraits.append(portrait)
 		var label = Label.new()
 		row.add_child(label)
 		panel.add_child(row)
@@ -244,6 +265,11 @@ func _refresh_dashboard() -> void:
 			if candidate["id"] == slot:
 				table = candidate
 				break
+		var portrait = table_portraits[slot - 1]
+		var server = "" if table.is_empty() or table.get("is_unserved", true) else str(table.get("active_wench", ""))
+		portrait.texture = STAFF_PORTRAITS.get(server)
+		portrait.visible = portrait.texture != null
+		portrait.tooltip_text = server
 		var selector = table_selectors[slot - 1]
 		selector.set_meta("empty_slot", table.is_empty())
 		selector.set_meta("visit_id", table.get("visit_id", -1))

@@ -26,12 +26,19 @@ func run() -> void:
 	check(ui.phrasebook_pause_timer.timeout.get_connections().size() == 1, "Exactly one timer callback")
 	check(not ui.log_label.visible and not ui.playback_active, "Opening is immediately playable with history hidden")
 	check(ui.overview_label.text.contains("Occupied: 0/6") and ui.status_label.text.contains("5pm"), "Opening dashboard shows time and empty occupancy")
+	ui._append_line("First event")
+	ui._append_line("Second event")
+	check(ui.latest_event_label.get_parsed_text() == "Second event" and not ui.log_label.visible, "Latest event stays visible with history closed")
+	ui._render_history()
+	check(ui.log_label.get_parsed_text().contains("First event") and not ui.log_label.get_parsed_text().contains("Second event"), "History contains previous events only")
 	var staff_node = ui.staff_labels["Mimi"]
 	var table_node = ui.table_labels[1]
 	var selector_node = ui.table_selectors[1]
 	# Restart while initial text is still playing.
 	ui._start_new_night()
 	flush_playback(ui)
+	check(not ui.table_portraits[0].visible and ui.table_portraits[0].texture == null, "Restart clears empty-table portrait")
+	check(not ui.latest_event.contains("Second event") and not ui.history_lines.has("First event") and not ui.history_lines.has("Second event"), "Restart clears previous events")
 	check(ui.sim.hour == 0 and not ui.next_hour_button.disabled, "Restart resets playback and unlocks opening")
 	check(ui.table_selectors.size() == 6 and ui.staff_container.get_child_count() == 3, "Dashboard has six slots and three staff")
 	for selector in ui.table_selectors:
@@ -53,6 +60,7 @@ func run() -> void:
 	ui._refresh_dashboard()
 	var selector = ui.table_selectors[0]
 	selector.item_selected.emit(3)
+	check(ui.table_portraits[0].visible and ui.table_portraits[0].texture == ui.STAFF_PORTRAITS["Mimi"], "Reassignment updates serving portrait")
 	check(table["active_wench"] == "Mimi", "Selector signal reassigns the correct visit")
 	check(ui.staff_labels["Mimi"].text.contains("Tables: 1"), "Live staff assignment text updates")
 	ui.sim.wenches[2]["stamina"] = 2
@@ -145,7 +153,7 @@ func run() -> void:
 	check(ui.staff_labels["Mimi"] == staff_node, "Restart reuses staff panel")
 	for i in range(200):
 		ui._append_line("History entry %d" % i)
-	check(ui.history_lines.size() == ui.HISTORY_LIMIT and ui.history_lines.back() == "History entry 199", "History stays bounded and retains newest events")
+	check(ui.history_lines.size() == ui.HISTORY_LIMIT and ui.history_lines.back() == "History entry 198" and ui.latest_event == "History entry 199", "History stays bounded and retains newest events")
 	check(ui.phrasebook_pause_timer.timeout.get_connections().size() == 1, "Restarts never accumulate timer callbacks")
 	ui.queue_free()
 	await process_frame
