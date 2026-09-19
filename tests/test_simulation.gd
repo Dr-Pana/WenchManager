@@ -131,6 +131,7 @@ func _test_choices() -> void:
 	check(sim.tables.size() == 1 and sim.tables[0]["visit_id"] == other["visit_id"], "Bounce targets only selected visit")
 
 func _test_staff_recovery() -> void:
+	check(GameConfig.EXHAUSTION_RECOVERY_HOURS == 1, "Exhaustion recovery is one full hour")
 	var sim = fresh()
 	var table = add_visit(sim, 1)
 	add_visit(sim, 2)

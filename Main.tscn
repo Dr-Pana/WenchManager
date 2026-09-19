@@ -47,6 +47,16 @@ layout_mode = 2
 layout_mode = 2
 text = "Goal: 3 completed visits · average departure satisfaction ≥ 0 (includes bounced visits)"
 
+[node name="LatestEventTitle" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "LATEST EVENT"
+
+[node name="LatestEvent" type="RichTextLabel" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 48)
+fit_content = true
+bbcode_enabled = true
+
 [node name="StaffTitle" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 text = "STAFF"

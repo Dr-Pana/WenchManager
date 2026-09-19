@@ -43,3 +43,9 @@ for this UI pass; the export preset and resource dependencies are unchanged.
 4. Resolve a decision using the named table and on-screen buttons.
 5. Toggle history during play. It should not change outcomes or delay input.
 6. Finish the night, read results without history, then restart.
+
+## Latest event and table portraits
+
+The latest nonempty description remains above the dashboard. Event history shows up to 160 preceding descriptions, excluding the current one. Restart clears the prior night’s descriptions. Each occupied, served table shows a 48-pixel portrait of its current server; empty and unserved tables hide it. Exhaustion recovery now takes one complete subsequent game hour, restoring full stamina at its end. Other stamina rules are unchanged.
+
+Validation for this follow-up: 729 simulation checks and 74 UI checks, using Godot 4.5 headless. Visual playtesting remains necessary.
