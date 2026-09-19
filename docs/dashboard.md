@@ -49,3 +49,9 @@ for this UI pass; the export preset and resource dependencies are unchanged.
 The latest nonempty description remains above the dashboard. Event history shows up to 160 preceding descriptions, excluding the current one. Restart clears the prior night’s descriptions. Each occupied, served table shows a 48-pixel portrait of its current server; empty and unserved tables hide it. Exhaustion recovery now takes one complete subsequent game hour, restoring full stamina at its end. Other stamina rules are unchanged.
 
 Validation for this follow-up: 729 simulation checks and 74 UI checks, using Godot 4.5 headless. Visual playtesting remains necessary.
+
+## Service balance prototype
+
+Complete routine service adds +1 satisfaction each hour. Successful staff events award +2 regardless of workload; failed events cost 1. Workload still affects difficulty and stamina drain. Idle staff recover 2 stamina, capped at maximum; exhaustion still requires one full hour. Routine service already distinguishes a partial order from an exact-stock fulfillment, and a regression check now protects that boundary. Victory targets are unchanged.
+
+Godot 4.5: 735 simulation checks and 74 UI checks passed. The existing 30-seed automatic-assignment baseline met the service goal in 27 nights (previously 9). This is a provisional easier baseline, not proof of final balance. Intervention UI/feedback is unchanged in this pass. No new staff consumable or intoxication mechanic is included.

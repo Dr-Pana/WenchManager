@@ -517,6 +517,10 @@ func _update_table_rowdiness_for_table(table: Dictionary) -> void:
 		table["satisfaction"] += GameConfig.COMPLETELY_OUT_OF_STOCK_SATISFACTION_PENALTY
 		table["rowdiness"] += GameConfig.COMPLETELY_OUT_OF_STOCK_ROWDINESS_PENALTY
 
+	# Reward complete routine service, including use of the final stock item.
+	if not table.get("is_unserved", false) and actual_consumption == pints_per_hour:
+		table["satisfaction"] += GameConfig.ROUTINE_SERVICE_SATISFACTION
+
 	# Store hourly consumption for phrasebook
 	table["hourly_consumption"] = actual_consumption
 	table["consumption"] = consumption
@@ -592,11 +596,6 @@ func _event_check(w: Dictionary, table: Dictionary, difficulty: int, success_msg
 	if active_table_count > 1:
 		overwork_difficulty = (active_table_count - 1) * GameConfig.OVERWORK_DIFFICULTY_PER_TABLE
 
-	# Service efficiency penalty per extra table
-	var efficiency_multiplier = 1.0
-	if active_table_count > 1:
-		efficiency_multiplier = 1.0 - (GameConfig.SERVICE_EFFICIENCY_PENALTY_PER_TABLE * (active_table_count - 1))
-
 	# Apply race compatibility modifier
 	var race_modifier = _get_race_compatibility_modifier(w.get("race", "human"), table.get("race", "human"))
 
@@ -604,9 +603,8 @@ func _event_check(w: Dictionary, table: Dictionary, difficulty: int, success_msg
 	var adjusted_difficulty = difficulty + overwork_difficulty
 
 	if roll >= adjusted_difficulty:
-		# Apply service efficiency penalty to satisfaction gains
-		var satisfaction_gain = int(GameConfig.EVENT_SUCCESS_BASE_SATISFACTION * efficiency_multiplier)
-		table["satisfaction"] += satisfaction_gain
+		# Workload affects difficulty, not the reward for a successful event.
+		table["satisfaction"] += GameConfig.EVENT_SUCCESS_BASE_SATISFACTION
 		return "%s: %s — %s succeeds (%s)." % [table["label"], w["name"], success_msg, stat]
 	else:
 		table["satisfaction"] += GameConfig.EVENT_FAIL_SATISFACTION_PENALTY
