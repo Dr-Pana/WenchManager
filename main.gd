@@ -3,12 +3,21 @@ extends Control
 @onready var hud = $HUD
 @onready var log_label: RichTextLabel = $MarginContainer/VBoxContainer/Log
 @onready var choices_container: VBoxContainer = $MarginContainer/VBoxContainer/Choices
-@onready var new_night_button: Button = $MarginContainer/VBoxContainer/HBoxContainer/NewNightButton
-@onready var next_hour_button: Button = $MarginContainer/VBoxContainer/HBoxContainer/NextTickButton
-@onready var next_update_button: Button = $MarginContainer/VBoxContainer/HBoxContainer/NextUpdateButton
+@onready var new_night_button: Button = $Footer/NewNightButton
+@onready var next_hour_button: Button = $Footer/NextTickButton
+@onready var next_update_button: Button = $Footer/NextUpdateButton
 @onready var status_label: Label = $MarginContainer/VBoxContainer/Status
 @onready var staff_container: HBoxContainer = $MarginContainer/VBoxContainer/Staff
 @onready var tables_container: GridContainer = $MarginContainer/VBoxContainer/Tables
+
+@onready var overview_label: Label = $MarginContainer/VBoxContainer/Overview
+@onready var action_label: Label = $MarginContainer/VBoxContainer/Action
+@onready var results_label: RichTextLabel = $MarginContainer/VBoxContainer/Results
+@onready var history_toggle: CheckButton = $Footer/HistoryToggle
+var staff_labels: Dictionary = {}
+var table_labels: Array[Label] = []
+var history_lines: Array[String] = []
+const HISTORY_LIMIT := 160
 
 var assignment_visit: int = -1
 var assignment_night: int = -1
@@ -32,6 +41,7 @@ func _ready() -> void:
 	new_night_button.pressed.connect(_start_new_night)
 	next_hour_button.pressed.connect(_on_next_hour_button_pressed)
 	next_update_button.pressed.connect(_on_next_update_button_pressed)
+	history_toggle.toggled.connect(_on_history_toggled)
 	_start_new_night()
 
 func _start_new_night() -> void:
@@ -40,6 +50,7 @@ func _start_new_night() -> void:
 	playback_active = false
 	_clear_choices()
 	log_label.clear()
+	history_lines.clear()
 	_apply_result(sim.start_new_night())
 
 func _on_next_hour_button_pressed() -> void:
@@ -51,30 +62,32 @@ func _apply_result(result: Dictionary) -> void:
 	phrasebook_pause_timer.stop()
 	_clear_choices()
 	pending_lines.clear()
-	pending_lines.append_array(result.get("log_lines", []))
+	# History is optional: presentation never waits on individual lines.
+	for line in result.get("log_lines", []):
+		_record_history(str(line))
 	for update in result.get("phrasebook_updates", []):
-		pending_lines.append(update["text"])
-	playback_active = true
+		_record_history(str(update["text"]))
+	if log_label.visible:
+		_render_history()
+	playback_active = sim.phase in [Simulation.Phase.ADMITTING, Simulation.Phase.PROCESSING]
+	_show_choices(sim.pending_choices)
 	_refresh_dashboard()
-	_playback_step()
+	if playback_active:
+		phrasebook_pause_timer.start(playback_delay)
+
 
 func _playback_step() -> void:
 	if not playback_active:
 		return
-	if not pending_lines.is_empty():
-		_append_line(str(pending_lines.pop_front()))
-		phrasebook_pause_timer.start(playback_delay)
-		_update_controls()
-		return
+	phrasebook_pause_timer.stop()
 	if sim.phase == Simulation.Phase.ADMITTING:
 		_apply_result(sim.process_next_client_entry())
-		return
-	if sim.phase == Simulation.Phase.PROCESSING:
+	elif sim.phase == Simulation.Phase.PROCESSING:
 		_apply_result(sim.process_next_table())
-		return
-	playback_active = false
-	_show_choices(sim.pending_choices)
-	_refresh_dashboard()
+	else:
+		playback_active = false
+		_refresh_dashboard()
+
 
 func _on_next_update_button_pressed() -> void:
 	if not playback_active:
@@ -105,8 +118,26 @@ func _clear_container(container: Node) -> void:
 		child.queue_free()
 
 func _append_line(text: String) -> void:
-	log_label.append_text(text + "\n")
+	_record_history(text)
+	if log_label.visible:
+		_render_history()
+
+func _record_history(text: String) -> void:
+	if text.is_empty():
+		return
+	history_lines.append(text)
+	while history_lines.size() > HISTORY_LIMIT:
+		history_lines.pop_front()
+
+func _render_history() -> void:
+	log_label.text = "\n".join(history_lines)
 	log_label.scroll_to_line(maxi(0, log_label.get_line_count() - 1))
+
+func _on_history_toggled(enabled: bool) -> void:
+	log_label.visible = enabled
+	if enabled:
+		_render_history()
+
 
 func _update_controls() -> void:
 	var can_manage = not playback_active and sim.phase == Simulation.Phase.BETWEEN_HOURS
@@ -125,72 +156,128 @@ func _update_controls() -> void:
 	for selector in table_selectors:
 		selector.disabled = not can_manage or selector.get_meta("empty_slot", false)
 
-func _refresh_dashboard() -> void:
-	var phase_text = "Between hours — adjust assignments, then advance"
-	if sim.phase == Simulation.Phase.CLOSED:
-		phase_text = "Closed — start a new night to play again"
-	elif sim.phase == Simulation.Phase.AWAITING_ASSIGNMENT:
-		phase_text = "Assign staff to " + sim.get_next_pending_table_label()
-	elif sim.phase == Simulation.Phase.ADMITTING:
-		phase_text = "Guests arriving"
-	elif sim.phase == Simulation.Phase.AWAITING_CHOICE:
-		phase_text = "Decision pending"
-	elif sim.phase == Simulation.Phase.PROCESSING:
-		phase_text = "Service in progress"
-	status_label.text = "%s | %d/%d hours complete | %s" % [sim._get_time_string(), sim.hour, GameConfig.HOURS_PER_NIGHT, phase_text]
-	_clear_container(staff_container)
+func _build_dashboard() -> void:
+	# Build once. Stable controls retain focus and do not flicker each turn.
 	for w in sim.wenches:
+		var panel = PanelContainer.new()
+		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var label = Label.new()
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var state = w["current_state"]
-		if state == "exhausted":
-			state += " (%dh left)" % w["recovery_hours"]
-		label.text = "%s · %s\nStamina %d/%d · %d tables · tips %d\nCharm %d · Service %d" % [w["name"], state, w["stamina"], w["max_stamina"], w["assigned_tables"].size(), w["tips_earned"], w["charm"], w["service"]]
-		staff_container.add_child(label)
-	_clear_container(tables_container)
-	table_selectors.clear()
-	hud.table_indicators.clear()
+		label.custom_minimum_size = Vector2(0, 80)
+		panel.add_child(label)
+		staff_container.add_child(panel)
+		staff_labels[w["name"]] = label
+	for slot in range(1, GameConfig.NUM_TABLES + 1):
+		var frame = PanelContainer.new()
+		frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var panel = VBoxContainer.new()
+		frame.add_child(panel)
+		var row = HBoxContainer.new()
+		var indicator = preload("res://TableIndicator.tscn").instantiate()
+		row.add_child(indicator)
+		var label = Label.new()
+		row.add_child(label)
+		panel.add_child(row)
+		var selector = OptionButton.new()
+		selector.add_item("No assignment")
+		selector.set_item_disabled(0, true)
+		for w in sim.wenches:
+			selector.add_item(w["name"])
+			selector.set_item_metadata(selector.item_count - 1, w["name"])
+		selector.item_selected.connect(_on_assignment_selected.bind(selector, slot))
+		panel.add_child(selector)
+		tables_container.add_child(frame)
+		indicator.set_number(slot)
+		hud.table_indicators.append(indicator)
+		table_selectors.append(selector)
+		table_labels.append(label)
+
+func _refresh_dashboard() -> void:
+	if staff_labels.is_empty():
+		_build_dashboard()
+	var phase_text = "Ready"
+	var action_text = "Review staff assignments, then select Next Hour."
+	match sim.phase:
+		Simulation.Phase.CLOSED:
+			phase_text = "Closed"
+			action_text = "Night complete. Review the results or start a new night."
+		Simulation.Phase.AWAITING_ASSIGNMENT:
+			phase_text = "Assignment needed"
+			action_text = "Choose a staff portrait for %s." % sim.get_next_pending_table_label()
+		Simulation.Phase.ADMITTING:
+			phase_text = "Guests arriving"
+			action_text = "Checking arrivals…"
+		Simulation.Phase.AWAITING_CHOICE:
+			phase_text = "Decision needed"
+			var target = sim._find_visit(sim.pending_choices[0]["visit_id"])
+			action_text = "%s needs attention. Choose an action below." % target.get("label", "A table")
+		Simulation.Phase.PROCESSING:
+			phase_text = "Service in progress"
+			action_text = "Table status updates automatically."
+	var time_text = sim._get_time_string()
+	if sim.hour_in_progress:
+		time_text = "%s–%s · Hour %d/%d" % [sim._format_time(sim.hour), sim._format_time(sim.hour + 1), sim.hour + 1, GameConfig.HOURS_PER_NIGHT]
+	else:
+		time_text += " · %d/%d hours complete" % [sim.hour, GameConfig.HOURS_PER_NIGHT]
+	status_label.text = "%s · %s" % [time_text, phase_text]
+	action_label.text = action_text
+	var guests = 0
+	var unserved = 0
+	for table in sim.tables:
+		guests += table["group_size"]
+		if table["is_unserved"]:
+			unserved += 1
+	var summary = sim.get_night_summary()
+	overview_label.text = "Occupied: %d/%d tables    Guests: %d    Unserved: %d    Completed visits: %d" % [sim.tables.size(), GameConfig.NUM_TABLES, guests, unserved, summary["completed"]]
+	for w in sim.wenches:
+		var assignments: Array[String] = []
+		for slot in w["assigned_tables"]:
+			assignments.append(str(slot))
+		var state = str(w["current_state"]).capitalize()
+		if w["current_state"] == "exhausted":
+			state = "Recovering · %dh left" % w["recovery_hours"]
+		elif assignments.is_empty():
+			state = "Available · resting"
+		staff_labels[w["name"]].text = "%s · %s\nStamina: %d/%d\nTables: %s\nCharm: %d · Service: %d · Tips: %d" % [w["name"], state, w["stamina"], w["max_stamina"], "None" if assignments.is_empty() else ", ".join(assignments), w["charm"], w["service"], w["tips_earned"]]
 	for slot in range(1, GameConfig.NUM_TABLES + 1):
 		var table: Dictionary = {}
 		for candidate in sim.tables:
 			if candidate["id"] == slot:
 				table = candidate
 				break
-		var panel = VBoxContainer.new()
-		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var label = Label.new()
-		if table.is_empty():
-			label.text = "Table %d · Empty\nWaiting for guests\n " % slot
-		else:
-			label.text = "Table %d · Visit %d · %d guests\nSatisfaction %d · Rowdiness %.1f\n%s" % [slot, table["visit_id"], table["group_size"], table["satisfaction"], table["rowdiness"], "UNSERVED" if table["is_unserved"] else table["active_wench"]]
-		var row = HBoxContainer.new()
-		var indicator = preload("res://TableIndicator.tscn").instantiate()
-		row.add_child(indicator)
-		row.add_child(label)
-		panel.add_child(row)
-		var selector = OptionButton.new()
+		var selector = table_selectors[slot - 1]
 		selector.set_meta("empty_slot", table.is_empty())
-		selector.add_item("Empty" if table.is_empty() else "Assign staff…")
-		selector.set_item_disabled(0, true)
-		for w in sim.wenches:
-			selector.add_item(w["name"])
-			var index = selector.item_count - 1
-			selector.set_item_metadata(index, w["name"])
-			selector.set_item_disabled(index, w["current_state"] != "serving")
+		selector.set_meta("visit_id", table.get("visit_id", -1))
+		selector.select(0)
+		if table.is_empty():
+			table_labels[slot - 1].text = "Table %d · EMPTY\nGuests: 0\nStaff: —\n" % slot
+		else:
+			var attention = "OCCUPIED"
+			if sim.has_pending_table_assignment() and sim.pending_table_assignments[0]["visit_id"] == table["visit_id"]:
+				attention = "ASSIGN STAFF"
+			elif sim.phase == Simulation.Phase.AWAITING_CHOICE and sim.pending_choices[0]["visit_id"] == table["visit_id"]:
+				attention = "DECISION NEEDED"
+			table_labels[slot - 1].text = "Table %d · %s\nGuests: %d · Staff: %s\nSatisfaction: %d\nRowdiness: %.1f" % [slot, attention, table["group_size"], "UNSERVED" if table["is_unserved"] else table["active_wench"], table["satisfaction"], table["rowdiness"]]
+		for i in range(sim.wenches.size()):
+			var w = sim.wenches[i]
+			selector.set_item_disabled(i + 1, w["current_state"] != "serving")
 			if not table.is_empty() and table["active_wench"] == w["name"]:
-				selector.select(index)
-		if not table.is_empty():
-			selector.item_selected.connect(_on_assignment_selected.bind(selector, table["visit_id"]))
-		panel.add_child(selector)
-		tables_container.add_child(panel)
-		indicator.set_number(slot)
-		hud.table_indicators.append(indicator)
-		table_selectors.append(selector)
+				selector.select(i + 1)
+	results_label.visible = sim.phase == Simulation.Phase.CLOSED
+	if results_label.visible:
+		var satisfaction = "N/A — no visits" if summary["visits"] == 0 else "%.1f" % summary["average_satisfaction"]
+		results_label.text = "[b]%s[/b]\nCompleted: %d · Bounced: %d · Average satisfaction: %s\nSales: %d · Staff tips: %d\nRowdiest visit: %s (%.1f)" % ["Service goal met" if summary["goal_met"] else "Service goal not met", summary["completed"], summary["bounced"], satisfaction, summary["sales"], summary["tips"], summary["rowdiest_label"], summary["peak_rowdiness"]]
+	else:
+		results_label.clear()
 	hud.update_table_indicators(sim)
 	_update_controls()
 
-func _on_assignment_selected(index: int, selector: OptionButton, visit_id: int) -> void:
+
+func _on_assignment_selected(index: int, selector: OptionButton, slot: int) -> void:
 	if playback_active or sim.phase != Simulation.Phase.BETWEEN_HOURS:
+		return
+	var visit_id = int(selector.get_meta("visit_id", -1))
+	var table = sim._find_visit(visit_id)
+	if table.is_empty() or table["id"] != slot:
 		return
 	var result = sim.reassign_table(visit_id, str(selector.get_item_metadata(index)))
 	for line in result["log_lines"]:
