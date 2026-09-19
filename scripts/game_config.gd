@@ -54,7 +54,9 @@ const DRUNKENNESS_ROWDINESS_MODIFIER := 0.2  # Per pint consumed
 # ============================================================================
 
 # Tips calculation
-const SATISFACTION_TIPS_DIVISOR := 10.0  # tips = consumption * price * (1 + satisfaction / SATISFACTION_TIPS_DIVISOR)
+# Formula: base 10% of consumption value + satisfaction bonus (up to 20%) = max 30% total
+# See _calculate_table_tips() in simulation.gd for implementation
+const SATISFACTION_TIPS_DIVISOR := 10.0  # Legacy constant, no longer used in tip calculation
 
 # Satisfaction/rowdiness penalties
 const OUT_OF_STOCK_SATISFACTION_PENALTY := -2
@@ -281,3 +283,9 @@ const STARTING_PATIENCE := 5  # Initial patience value for tables
 # Client entry chance
 const CLIENT_ENTRY_CHANCE := 0.5  # 50% chance for each client to enter the tavern
 
+
+# Recovery and provisional objective from the tested milestone.
+const EXHAUSTION_RECOVERY_HOURS := 3
+const IDLE_STAMINA_RECOVERY := 1
+const TARGET_COMPLETED_VISITS := 3
+const TARGET_SATISFACTION := 0.0
