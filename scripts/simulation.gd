@@ -15,11 +15,14 @@ var phrasebook_templates: Array[String] = []  # Loaded phrasebook templates
 # Table-by-table processing state
 var current_hour_tables: Array = []  # Randomized table order for current hour
 var current_table_index: int = -1  # Which table is currently being processed
-enum Phase { BETWEEN_HOURS, ADMITTING, AWAITING_ASSIGNMENT, PROCESSING, AWAITING_CHOICE, CLOSED }
+enum Phase { BETWEEN_HOURS, ADMITTING, AWAITING_ASSIGNMENT, PROCESSING, AWAITING_CHOICE, CLOSED, AWAITING_ORDER }
 var phase: Phase = Phase.CLOSED
 var hour_in_progress: bool:
 	get:
-		return phase in [Phase.ADMITTING, Phase.AWAITING_ASSIGNMENT, Phase.PROCESSING, Phase.AWAITING_CHOICE]
+		return phase in [Phase.ADMITTING, Phase.AWAITING_ASSIGNMENT, Phase.PROCESSING, Phase.AWAITING_CHOICE, Phase.AWAITING_ORDER]
+var counter_service_enabled := false
+var pending_order: Dictionary = {}
+var receipts: Array[Dictionary] = []
 var night_serial: int = 0
 var pending_client_queue: Array = []
 var pending_table_assignments: Array = []
@@ -45,6 +48,8 @@ func start_new_night(seed_value: int = -1) -> Dictionary:
 	gold = 0
 	phase = Phase.BETWEEN_HOURS
 	pending_choices.clear()
+	pending_order.clear()
+	receipts.clear()
 	pending_client_queue.clear()
 	pending_table_assignments.clear()
 	current_hour_tables.clear()
@@ -140,32 +145,38 @@ func process_next_table() -> Dictionary:
 		var table = _find_visit(visit_id)
 		if table.is_empty():
 			continue
-		var before_satisfaction = table["satisfaction"]
-		var before_rowdiness = table["rowdiness"]
-		_apply_unserved_penalties_for_table(table)
-		_update_table_rowdiness_for_table(table)
-		var event_id = _roll_event_for_table(table)
-		var event_text = ""
-		if event_id != "":
-			event_text = _resolve_event(table, event_id)
-		table["peak_rowdiness"] = max(table["peak_rowdiness"], table["rowdiness"])
-		var updates = []
-		var narrative = _generate_phrasebook_update_for_table(table)
-		if not narrative.is_empty():
-			updates.append(narrative)
-		var outcome = "%s: satisfaction %+d → %d; rowdiness %+.1f → %.1f." % [table["label"], table["satisfaction"] - before_satisfaction, table["satisfaction"], table["rowdiness"] - before_rowdiness, table["rowdiness"]]
-		updates.append({"text": event_text + " " + outcome if event_text != "" else outcome})
-		if table["rowdiness"] >= GameConfig.ROWDINESS_FISTFIGHT:
-			updates.append({"text": "[color=red]%s must be cleared by the bouncers.[/color]" % table["label"]})
-			pending_choices = [_choice("bounce", "Acknowledge (table cleared)", table)]
-		elif table["rowdiness"] >= GameConfig.ROWDINESS_DANGEROUS:
-			updates.append({"text": "[color=orange]%s needs your attention.[/color]" % table["label"]})
-			pending_choices = [_choice("free_round", "Free round on the house", table), _choice("bouncer", "Step in personally", table), _choice("ignore", "Ignore", table)]
-		if has_pending_choices():
-			phase = Phase.AWAITING_CHOICE
-		return _result([], updates)
+		if counter_service_enabled and not table["is_unserved"]:
+			pending_order = _make_counter_order(table)
+			phase = Phase.AWAITING_ORDER
+			return _result(["%s brings Table %d's order to the counter." % [table["active_wench"], table["id"]]])
+		return _resolve_table_service(table)
 	return _finish_hour()
 
+func _resolve_table_service(table: Dictionary, supplied: int = -1) -> Dictionary:
+	var before_satisfaction = table["satisfaction"]
+	var before_rowdiness = table["rowdiness"]
+	_apply_unserved_penalties_for_table(table)
+	_update_table_rowdiness_for_table(table, supplied)
+	var event_id = _roll_event_for_table(table)
+	var event_text = ""
+	if event_id != "":
+		event_text = _resolve_event(table, event_id)
+	table["peak_rowdiness"] = max(table["peak_rowdiness"], table["rowdiness"])
+	var updates = []
+	var narrative = _generate_phrasebook_update_for_table(table)
+	if not narrative.is_empty():
+		updates.append(narrative)
+	var outcome = "%s: satisfaction %+d → %d; rowdiness %+.1f → %.1f." % [table["label"], table["satisfaction"] - before_satisfaction, table["satisfaction"], table["rowdiness"] - before_rowdiness, table["rowdiness"]]
+	updates.append({"text": event_text + " " + outcome if event_text != "" else outcome})
+	if table["rowdiness"] >= GameConfig.ROWDINESS_FISTFIGHT:
+		updates.append({"text": "[color=red]%s must be cleared by the bouncers.[/color]" % table["label"]})
+		pending_choices = [_choice("bounce", "Acknowledge (table cleared)", table)]
+	elif table["rowdiness"] >= GameConfig.ROWDINESS_DANGEROUS:
+		updates.append({"text": "[color=orange]%s needs your attention.[/color]" % table["label"]})
+		pending_choices = [_choice("free_round", "Free round on the house", table), _choice("bouncer", "Step in personally", table), _choice("ignore", "Ignore", table)]
+	if has_pending_choices():
+		phase = Phase.AWAITING_CHOICE
+	return _result([], updates)
 
 func apply_choice(choice_id: String) -> Dictionary:
 	if phase != Phase.AWAITING_CHOICE:
@@ -181,6 +192,8 @@ func apply_choice(choice_id: String) -> Dictionary:
 	if table.is_empty():
 		return _result()
 	var logs = []
+	var before_satisfaction: int = table["satisfaction"]
+	var before_rowdiness: float = table["rowdiness"]
 	match selected["action"]:
 		"bounce":
 			logs.append("%s is cleared; its tips are forfeited." % table["label"])
@@ -208,7 +221,7 @@ func apply_choice(choice_id: String) -> Dictionary:
 				table["consumption"] = current_consumption + actual_consumption
 
 				# Check if we ran out
-				if stock[key] == 0:
+				if actual_consumption < pints_per_hour:
 					# Out of stock - customers are unhappy
 					table["satisfaction"] += GameConfig.OUT_OF_STOCK_SATISFACTION_PENALTY
 					table["rowdiness"] += GameConfig.OUT_OF_STOCK_ROWDINESS_PENALTY
@@ -224,7 +237,7 @@ func apply_choice(choice_id: String) -> Dictionary:
 			_update_table_event_chance(table)
 
 			logs.append("[b]You offer a free round at %s.[/b]" % table["label"])
-			logs.append("The customers cheer! Satisfaction increases, and the rowdiness subsides.")
+			logs.append("Delivered %d of %d. Satisfaction %+d; rowdiness %+.1f." % [actual_consumption, pints_per_hour, table["satisfaction"] - before_satisfaction, table["rowdiness"] - before_rowdiness])
 		"bouncer":
 			table["satisfaction"] += GameConfig.BOUNCER_SATISFACTION_PENALTY
 			table["rowdiness"] += GameConfig.BOUNCER_ROWDINESS_REDUCTION
@@ -464,7 +477,7 @@ func _update_staff_after_hour() -> Array:
 	return logs
 
 
-func _update_table_rowdiness_for_table(table: Dictionary) -> void:
+func _update_table_rowdiness_for_table(table: Dictionary, supplied: int = -1) -> void:
 	# Update rowdiness for a single table based on:
 	# 1. Race modifier (orcs rowdiest, then dwarves, etc.)
 	# 2. Drunkenness (consumption over time)
@@ -494,8 +507,10 @@ func _update_table_rowdiness_for_table(table: Dictionary) -> void:
 	var actual_consumption = 0
 	if table.get("is_unserved", false):
 		pass
-	elif stock.has(key) and stock[key] > 0:
+	elif stock.has(key) and stock[key] > 0 and supplied != 0:
 		actual_consumption = min(pints_per_hour, stock[key])
+		if supplied >= 0:
+			actual_consumption = mini(actual_consumption, supplied)
 		stock[key] -= actual_consumption
 		stock[key] = max(stock[key], 0)
 		consumption += actual_consumption
@@ -1017,3 +1032,49 @@ func _get_liquor_color(liquor_name: String) -> String:
 func _colorize_liquor(liquor_name: String) -> String:
 	var color = _get_liquor_color(liquor_name)
 	return "[color=%s]%s[/color]" % [color, liquor_name]
+
+# Counter service is opt-in so the legacy scene remains a useful simulation harness.
+func _make_counter_order(table: Dictionary) -> Dictionary:
+	var product: String = table["liquor_preference"]
+	var quantity := int(ceil(table["group_size"] * GameConfig.SOCIAL_STATUS_BASE_DRAIN.get(table["social_status"], 1.0)))
+	var unit_price: int = GameConfig.LIQUOR_PRICES[product]
+	var bill := quantity * unit_price
+	return {"id": "%d:%d:%d" % [night_serial, hour, table["visit_id"]],
+		"visit_id": table["visit_id"], "slot": table["id"], "server": table["active_wench"],
+		"product": product, "stock_key": _liquor_key_from_preference(product),
+		"quantity": quantity, "unit_price": unit_price, "tender": int(ceil(bill / 5.0)) * 5 + 5}
+
+func submit_counter_order(order_id: String, tray: Dictionary, change: int, skip: bool = false) -> Dictionary:
+	if phase != Phase.AWAITING_ORDER or pending_order.get("id", "") != order_id:
+		return _counter_error("That order is no longer active.")
+	var table = _find_visit(pending_order["visit_id"])
+	if table.is_empty():
+		return _counter_error("This visit is no longer active.")
+	var order := pending_order.duplicate(true)
+	var available := mini(order["quantity"], stock.get(order["stock_key"], 0))
+	var delivered := 0 if skip else available
+	if not skip:
+		for product in tray:
+			if typeof(tray[product]) != TYPE_INT or tray[product] < 0:
+				return _counter_error("The tray contains an invalid quantity.")
+			if product != order["product"] and tray[product] != 0:
+				return _counter_error("Return the extra drinks to the shelf first.")
+		if tray.get(order["product"], 0) != delivered:
+			return _counter_error("Prepare %d × %s for this order." % [delivered, order["product"]])
+		if change != order["tender"] - delivered * order["unit_price"]:
+			return _counter_error("The change does not match the amount supplied.")
+	var sale: int = delivered * order["unit_price"]
+	receipts.append({"order_id": order_id, "visit_id": order["visit_id"], "quantity": delivered,
+		"sale": sale, "tender": order["tender"], "change": order["tender"] - sale, "skipped": skip})
+	pending_order.clear()
+	phase = Phase.PROCESSING
+	var result := _resolve_table_service(table, delivered)
+	result["accepted"] = true
+	result["log_lines"].append("Table %d: %d items delivered · %d received · %d returned · %d sale." % [order["slot"], delivered, order["tender"], order["tender"] - sale, sale])
+	return result
+
+func _counter_error(message: String) -> Dictionary:
+	var result := _result()
+	result["accepted"] = false
+	result["error"] = message
+	return result

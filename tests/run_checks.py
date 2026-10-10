@@ -11,7 +11,8 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 commands = [(['--editor', '--quit'], None),
             (['--script', 'tests/test_simulation.gd'], 'Simulation:'),
-            (['--script', 'tests/test_ui.gd'], 'UI:')]
+            (['--script', 'tests/test_ui.gd'], 'UI:'),
+            (['--script', 'tests/test_counter.gd'], 'Counter:')]
 for flags, marker in commands:
     result = subprocess.run([args.godot, '--headless', '--path', str(root), *flags],
                             capture_output=True, text=True, timeout=60)
