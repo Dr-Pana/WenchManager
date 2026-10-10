@@ -1,34 +1,27 @@
 # Wench Manager
 
-A text-based Godot 4.5 tavern management prototype. This branch reconciles the recovered local iteration with the
-**One manageable night** milestone: eight hours, six table slots, three staff,
-player reassignment, clear event outcomes and an accurate closing summary.
+A Godot 4.5 tavern-management prototype with a playable **Behind the bar** counter loop:
+assign staff on a graphical floor, prepare orders, count change, and settle each sale.
+Eight hourly intervals, six table slots and the original three staff portraits remain.
 
 ## Run
 
-Use Godot **4.5 stable**, standard edition. Import `project.godot` and press F6/F5
-with `Main.tscn`, or run from the repository root:
-
-```sh
-godot --editor --path .
-godot --path .
-```
-
-The scene uses a 1152 × 900 reference viewport and scales with the window.
+Import `project.godot` in **Godot 4.5 stable** and press **F5**.
+The default scene is `CounterMain.tscn`; the older dashboard remains in `Main.tscn` (F6).
 No plugins, API keys or external dependencies are required.
 
-- Read the live clock, occupancy totals, staff stamina and table panels. Opening is immediately playable.
-- **Event history** reveals recent narration if wanted; it is hidden by default.
-- **Continue now** skips the brief pause between automatic updates.
-- **Next Hour** admits guests. Assign each group with a staff portrait, then resolve service choices.
-- Between hours, use each occupied table's dropdown to assign available staff.
-- Watch stamina, coverage and satisfaction. Unassigned idle staff recover stamina;
-  exhausted staff recover after three hours.
-- At 1am the night closes. **New Night** starts a fresh run, including during playback.
+Open the doors, assign arriving groups with staff portraits, then fill each order
+using the bottle controls. Count out change with coin buttons and **Serve & settle**.
+Time pauses for player input. Items can be returned from the tray before settlement.
+Between hours click a table and select a portrait to reassign its server.
 
-The provisional goal is three completed visits with nonnegative average departure
-satisfaction, including bounced groups in that average. Balance still needs human
-playtesting; the objective and recovery settings are in `scripts/game_config.gd`.
+Idle staff recover 2 stamina per hour; exhausted staff recover fully after one hour.
+Closing results appear at 1am. **New Night** asks before clearing an active run.
+
+See [the counter play guide](docs/counter-service.md) for shortcuts, transaction rules,
+validation and next design decisions. The reference viewport is 1440 × 960 and scales
+with the window. This first counter build uses one abstract currency and unlimited
+change denominations; finite cash, campaign saves and faction systems are future work.
 
 ## Verify
 

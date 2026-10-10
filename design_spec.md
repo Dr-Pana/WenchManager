@@ -1,4 +1,8 @@
-# Wench Manager — Reconciled playable night (v0.3)
+# Wench Manager — Behind the bar (v0.4)
+
+The default presentation and counter transactions are specified in
+[docs/counter-service.md](docs/counter-service.md). This document also describes
+the preserved hourly simulation and legacy dashboard.
 
 This document describes the implemented milestone. The original long-term design
 is preserved in `docs/recovered_design_archive.md`; its implementation claims are
@@ -6,7 +10,7 @@ historical, not a description of this build.
 
 ## Scope and player loop
 
-A text-based fantasy tavern management game in Godot 4.5, with three fixed staff
+A fantasy tavern management game in Godot 4.5, with three fixed staff
 members and six reusable table slots. Each night has eight service intervals,
 5pm–1am. Start empty, advance an hour, assign each arriving group using portraits,
 read events and resolve crises, adjust
@@ -20,7 +24,8 @@ This is a service objective, not a campaign economy or a bankruptcy system.
 
 ## Structure
 
-- `Main.tscn`: one scene; log, controls, staff dashboard, six table panels, HUD.
+- `CounterMain.tscn`, `ui/counter/`, `art/`: graphical floor, counter, tray, coins and stock controls.
+- `Main.tscn`: legacy scene; log, controls, staff dashboard, six table panels, HUD.
 - `main.gd`: UI controller, one narration timer, choices and reassignment.
 - `HUD.gd`: resource labels, recovered table indicators and portrait availability.
 - `TableIndicator.tscn`, `ui/TableIndicator.gd`: colored slot/assignment indicators.
@@ -39,6 +44,7 @@ This is a service objective, not a campaign economy or a bankruptcy system.
 - `AWAITING_ASSIGNMENT`: a staff portrait resolves exactly the pending visit for this night.
 - `PROCESSING`: only `process_next_table()` advances the active hour.
 - `AWAITING_CHOICE`: only an exact pending choice ID may resolve the decision.
+- `AWAITING_ORDER`: the graphical scene waits for a valid tray and change, or a full refund.
 - `CLOSED`: gameplay mutations are blocked until `start_new_night()`.
 
 `hour` counts completed intervals. `hour_in_progress` is a derived compatibility
@@ -84,9 +90,9 @@ OVERWORK_STAMINA_DRAIN_PER_TABLE` once per completed hour, based on the workload
 snapshot. This includes groups that depart or are bounced during that hour.
 Serving the final hour completes before its fatigue is applied.
 
-At zero stamina, staff become exhausted for three subsequent service intervals.
-They cannot serve or be assigned while exhausted. At the end of the third recovery
-interval, availability and full stamina return. Idle available staff recover one
+At zero stamina, staff become exhausted for one subsequent service interval.
+They cannot serve or be assigned while exhausted. At the end of that recovery
+interval, availability and full stamina return. Idle available staff recover two
 stamina per hour up to their maximum. Backup coverage is load-balanced from the
 currently available roster rather than stored in stale backup lists.
 
